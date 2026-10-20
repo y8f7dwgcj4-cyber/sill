@@ -10,12 +10,11 @@ struct MenuEntry: Equatable {
     enum Action: Equatable {
         case none
         case allowScreenRecording, allowAccessibility, openPrivacy
-        /// These two are absolute, like the radio items: each sets what the item offered when the
+        /// Absolute, like the radio items: it sets what the item offered when the
         /// menu was built (on when it showed unchecked). A device can change the setting while the
         /// menu is open, which does not rebuild it, and a toggle would then do the opposite of what
         /// the item shows.
         case setVirtualDisplay(Bool)
-        case setDirectWireless(Bool)
         case setMaxFPS(Int), setBitrate(Int), setCaptureScale(CGFloat)
         case toggleLaunchAtLogin
         case showLog, showSettings, quit
@@ -24,9 +23,6 @@ struct MenuEntry: Equatable {
         case showSettingsTab(SettingsTab)
         /// Pair iPhone or iPad…: a pairing window, or the open one brought forward.
         case showPairing
-        /// "‹device› Wants to Pair": the window that shows its code brought forward, else one
-        /// opened on the Mac, asked by that device.
-        case showPairingRequest(name: String, showing: Bool)
     }
 
     var kind: Kind
@@ -64,7 +60,6 @@ enum MenuBuilder {
             case .allowAccessibility: .allowAccessibility
             case .showRemoteAccess: .showSettingsTab(.remoteAccess)
             case .showDevices: .showSettingsTab(.devices)
-            case .pairingRequest(let name, let showing): .showPairingRequest(name: name, showing: showing)
             case .none: .none
             }
             menu.append(MenuEntry(kind: .item, title: a.title, subtitle: a.subtitle, enabled: action != .none,
@@ -96,13 +91,7 @@ enum MenuBuilder {
         ]))
         menu.append(.separator)
 
-        // How Sill runs on this Mac, not the picture: devices reach it over peer-to-peer Wi-Fi too.
-        // Here as well as in Settings because it is situational (on in a café, off at home).
-        menu.append(MenuEntry(kind: .item, title: "Direct Wireless Connection",
-                              subtitle: "No shared network needed; Wi\u{2011}Fi streams can stutter",
-                              checked: config.directWireless, action: .setDirectWireless(!config.directWireless)))
-        // Opens the pane rather than toggling: turning it on is worth reading what it does, and the
-        // internet switch stays one deliberate step deeper, never in the menu.
+        // Opens the pane rather than toggling: turning it on is worth reading what it does.
         if let note = p.remoteAccessNote {
             menu.append(MenuEntry(kind: .item, title: "Remote Access…", subtitle: note, action: .showSettingsTab(.remoteAccess)))
         }
@@ -277,7 +266,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         case .allowAccessibility: model.permissions.requestAccessibility()
         case .openPrivacy: model.permissions.openPrivacyPane()
         case .setVirtualDisplay(let on): model.settings.config.virtualDisplay = on
-        case .setDirectWireless(let on): model.settings.config.directWireless = on
         case .setMaxFPS(let fps): model.settings.config.maxFPS = fps
         case .setBitrate(let bitrate): model.settings.config.bitrate = bitrate
         case .setCaptureScale(let scale): model.settings.config.captureScale = scale
@@ -286,7 +274,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         case .showSettings: model.showSettings?(nil)
         case .showSettingsTab(let tab): model.showSettings?(tab)
         case .showPairing: model.pairDevice()
-        case .showPairingRequest(let name, let showing): model.showPairingRequest(name: name, showing: showing)
         case .quit: NSApp.terminate(nil)
         }
     }

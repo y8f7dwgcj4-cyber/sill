@@ -12,42 +12,32 @@ struct LiveRemoteAccessPane: View {
     var body: some View {
         RemoteAccessPane(status: model.coordinator?.status.snapshot.remote ?? RemoteStatus(),
                          remoteAccess: $settings.config.remoteAccess,
-                         internetAccess: $settings.config.internetAccess,
                          port: settings.config.remotePort,
-                         addressName: settings.remoteAddressName,
                          actions: RemoteAccessPane.Actions(
                              setPort: { settings.config.remotePort = $0 },
-                             setAddressName: { settings.remoteAddressName = $0 },
                              showDevices: { model.showSettings?(.devices) }))
     }
 }
 
-/// The Remote Access pane (docs/remote-access-plan.md §6.1): the switch, the Mac's addresses and
-/// its port, how many devices are paired (the list itself is in Settings › Devices,
-/// docs/home-pairing-plan.md §6.2), the internet switch, and sleep. Values in, actions out, so the
+/// The Remote Access pane: the switch, the Mac's addresses and its port, how many devices are
+/// paired (the list itself is in Settings › Devices), and sleep. Values in, actions out, so the
 /// previews can draw every state. Errors show inline, never in alerts.
 struct RemoteAccessPane: View {
     struct Actions {
         var setPort: (Int) -> Void = { _ in }
-        var setAddressName: (String) -> Void = { _ in }
         /// Show Devices…: Settings on the Devices tab.
         var showDevices: () -> Void = {}
     }
 
     let status: RemoteStatus
     @Binding var remoteAccess: Bool
-    @Binding var internetAccess: Bool
     /// The configured port (the app's is never 0).
     let port: Int
-    /// The address name setting, as saved.
-    let addressName: String
     let actions: Actions
 
     @State private var editingPort = false
     @State private var portText = ""
     @State private var portSaved = false
-    @State private var nameText: String?
-    @State private var nameProblem: String?
 
     private var available: Bool { status.identityProblem == nil }
     private var on: Bool { remoteAccess && available }
@@ -63,11 +53,10 @@ struct RemoteAccessPane: View {
                     Warning("Remote access isn’t available: Sill couldn’t use the keychain (\(reason)).")
                 }
             } footer: {
-                Footnote("Lets the iPhone and iPad you pair connect to this Mac from other networks: through a VPN such as Tailscale, or through a port you forward on your router. Sill turns away every device you haven’t paired, and encrypts everything the paired ones send and receive.")
+                Footnote("Lets the iPhone and iPad you pair connect to this Mac through Tailscale. Sill turns away every device you haven’t paired, and encrypts everything the paired ones send and receive.")
             }
             if on { addresses }
             pairedDevices
-            if on { internet }
             Section {
                 LabeledContent {
                     Button("Open Energy Settings…") { Self.openEnergySettings() }
@@ -121,7 +110,7 @@ struct RemoteAccessPane: View {
                 Text("\(name) — Not connected").foregroundStyle(.secondary)
             }
             if !rows.contains(where: { $0.vpn }) && status.vpnDown.isEmpty {
-                Text("No VPN is running on this Mac. Install one such as Tailscale on this Mac and on your iPhone or iPad, or allow connections from the internet below.")
+                Text("Tailscale is not running on this Mac. Install it on this Mac and on your iPhone or iPad.")
                     .foregroundStyle(.secondary)
             }
             portRow
@@ -201,8 +190,7 @@ struct RemoteAccessPane: View {
 
     // MARK: Paired devices
 
-    /// One row: the list, Remove and Pair iPhone or iPad… are in Settings › Devices, since the same
-    /// devices connect at home too.
+    /// One row: the list, Remove and Pair iPhone or iPad… are in Settings › Devices.
     private var pairedDevices: some View {
         Section {
             LabeledContent("Paired devices") {
@@ -212,108 +200,14 @@ struct RemoteAccessPane: View {
                 }
             }
         } footer: {
-            Footnote("The devices you pair in Devices can connect from afar while Remote Access is on.")
-        }
-    }
-
-    // MARK: Internet
-
-    private var internet: some View {
-        Section {
-            Toggle("Allow connections from the internet", isOn: $internetAccess)
-            if internetAccess {
-                if let lan = status.lanAddress {
-                    LabeledContent {
-                        CopyButton(text: lan, spoken: "Copy this Mac’s address")
-                    } label: {
-                        Text("Forward TCP port \(String(port)) on your router to this Mac (\(lan)), and reserve that address for this Mac in the router’s settings.")
-                    }
-                }
-                routerRow
-                addressNameRow
-                if let v6 = status.addresses.first(where: { $0.kind == MacAddress.internet && $0.via == "IPv6" }) {
-                    LabeledContent {
-                        HStack(spacing: 8) {
-                            Text(v6.host).textSelection(.enabled)
-                            CopyButton(text: v6.host, spoken: "Copy the IPv6 address")
-                        }
-                    } label: {
-                        Text("IPv6")
-                        Text("Works only if your router lets incoming IPv6 connections reach this Mac; most don’t.")
-                    }
-                }
-            }
-        } header: {
-            Text("Internet")
-        } footer: {
-            if internetAccess {
-                Footnote("Anyone on the internet can now reach port \(String(port)) and try to connect. Sill turns away every device you haven’t paired. Turning this off doesn’t close the port on your router: remove the forward there too.")
-            } else {
-                Footnote("Only needed for a port forward on your router. A VPN is simpler and keeps this Mac off the open internet.")
-            }
-        }
-    }
-
-    @ViewBuilder private var routerRow: some View {
-        switch status.router {
-        case .off:
-            EmptyView()
-        case .asking:
-            LabeledContent("Router’s internet address") { Text("Asking your router…").foregroundStyle(.secondary) }
-        case .address(let a):
-            LabeledContent("Router’s internet address") {
-                HStack(spacing: 8) {
-                    Text(a).textSelection(.enabled)
-                    CopyButton(text: a, spoken: "Copy the router’s internet address")
-                }
-            }
-        case .carrierNAT(let a):
-            LabeledContent("Router’s internet address") {
-                Warning("Your internet provider shares this address among many homes (\(Self.masked(a))), so a port forward can’t reach this Mac. Use a VPN such as Tailscale instead.")
-            }
-        case .doubleNAT:
-            LabeledContent("Router’s internet address") {
-                Warning("Your router sits behind another router. Forward the port on both, or use a VPN.")
-            }
-        case .noAnswer:
-            LabeledContent("Router’s internet address") {
-                Text("Your router didn’t say. You’ll find the address in its settings.").foregroundStyle(.secondary)
-            }
-        }
-    }
-
-    @ViewBuilder private var addressNameRow: some View {
-        LabeledContent {
-            TextField("Address name", text: Binding(get: { nameText ?? addressName }, set: { nameText = $0; nameProblem = nil }),
-                      prompt: Text("home.example.net"))
-                .labelsHidden()
-                .frame(width: 220)
-                .onSubmit { saveAddressName() }
-        } label: {
-            Text("Address name (optional)")
-            Text("If your router has a dynamic DNS name, enter it so your devices keep finding this Mac when your internet address changes. Add :port if the router forwards a different outside port.")
-        }
-        if let nameProblem { Warning(nameProblem) }
-    }
-
-    private func saveAddressName() {
-        let text = (nameText ?? addressName).trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { nameProblem = nil; actions.setAddressName(""); return }
-        switch AddressParser.parse(text) {
-        case .success:
-            nameProblem = nil
-            actions.setAddressName(text)
-        case .failure(.zone):
-            nameProblem = "Remove the part after %: it only works on this network."
-        case .failure:
-            nameProblem = "That doesn’t look like an address. Try home.example.net, or home.example.net:17455."
+            Footnote("The devices you pair in Devices can connect while Remote Access is on.")
         }
     }
 
     // MARK: Helpers
 
     /// One row per way in: the service's name, the name devices dial first (a MagicDNS name) and
-    /// the addresses behind it. Internet addresses have their own section.
+    /// the addresses behind it. Internet addresses are not shown.
     struct AddressRow: Identifiable {
         var id: String { label }
         var label: String
@@ -342,13 +236,6 @@ struct RemoteAccessPane: View {
                               vpn: list.contains { $0.kind == MacAddress.vpn },
                               lan: list.allSatisfy { $0.kind == MacAddress.lan } && via != "This Mac")
         }
-    }
-
-    /// "100.72.x.x": a shared carrier address says nothing useful beyond its first half.
-    static func masked(_ address: String) -> String {
-        let parts = address.split(separator: ".")
-        guard parts.count == 4 else { return address }
-        return "\(parts[0]).\(parts[1]).x.x"
     }
 
     /// Battery on a laptop, Energy on a desktop: one System Settings extension on macOS 27

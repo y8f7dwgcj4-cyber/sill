@@ -250,8 +250,6 @@ package final class StreamCoordinator {
     /// The quality the devices' links are judged at: the running stream's (`select`'s commit), nil
     /// while nothing streams. A restart that keeps it keeps their judgement (LinkJudge.judgedAfresh).
     private var judgedQuality: LinkJudge.Quality?
-    /// When each connection last asked for a pairing code (kind 21): once per 30 s.
-    private var lastPairingWanted: [ObjectIdentifier: CFAbsoluteTime] = [:]
     /// The streamed app's menus, for the devices that asked for them (kinds 24, 25 and 27,
     /// MenuMirror). Reads and presses nothing for a device that never asked.
     let menus: MenuMirror
@@ -274,15 +272,12 @@ package final class StreamCoordinator {
 
     /// `config` is validated, and its virtual display forced off without the AppKit loop, which
     /// the display needs (VirtualDisplay.swift, "Event loop"). `appKitLoop`: see the property.
-    /// `homePairing`: the home door speaks TLS with `remote`'s identity and trust list
-    /// (docs/home-pairing-plan.md §4.9; Sill.app, SillHost --pairing), or has no listener at all
-    /// when that identity could not be loaded; without it the home door is plain, as before (the
-    /// CLI's default). `testHooks`: false for Sill.app's own executable, which honours no TEST ONLY
-    /// hook that bears on who gets in or what pairing needs (§4.3): with it false, or on a host
-    /// that advertises, those hooks are ignored with one line each. `hostVersion`: Sill.app's
-    /// version for the window lists, when it has one that parses.
+    /// `remote`: the door, with its identity and trust list; without it no device can connect.
+    /// `testHooks`: false for Sill.app's own executable, which honours no TEST ONLY hook that bears
+    /// on who gets in. `hostVersion`: Sill.app's version for the window lists, when it has one
+    /// that parses.
     package init(config: HostConfig, synthetic: Bool = false, appKitLoop: Bool, remote: RemoteAccess? = nil,
-                 homePairing: Bool = false, testHooks: Bool = true, hostVersion: String? = nil) throws {
+                 testHooks: Bool = true, hostVersion: String? = nil) throws {
         var config = config.validated()
         if !appKitLoop { config.virtualDisplay = false }
         self.config = config
@@ -297,22 +292,11 @@ package final class StreamCoordinator {
         softwareOnly = software.on
         testHookLines = [path.line, software.line, inputLog.line].compactMap { $0 }
         status = HostStatus()
-        var home = StreamServer.HomeDoorMode.plain
-        if homePairing, let remote {
-            if let identity = remote.identity {
-                home = .tls(StreamServer.HomeTLS(identity: identity, trust: remote.trust))
-            } else {
-                home = .closed("Sill couldn’t use its key \(remote.keyPlace) (\(remote.identityProblem ?? "no identity"))")
-            }
-        }
-        // The test pattern is for test clients, not devices.
-        server = try StreamServer(advertise: !synthetic, home: home, testHooks: testHooks)
+        server = StreamServer(testHost: DoorPolicy.isTestHost(synthetic: synthetic, bundled: !testHooks))
         server.macName = macName                           // the update goodbye names this Mac (DeviceGate)
-        TestHooks.reportIgnored(testHost: server.isTestHost)
-        // A host that does not advertise, `--synthetic` in the CLI and in the app alike (as
-        // `injector.dryRun` below), not `server.isTestHost`, which also leaves out Sill.app's own
-        // executable: that narrowing is for the door and pairing hooks (TestHooks), and a gesture's
-        // chord must never be posted from the test pattern.
+        // `--synthetic` in the CLI and in the app alike (as `injector.dryRun` below), not
+        // `server.isTestHost`, which also leaves out Sill.app's own executable: a gesture's chord
+        // must never be posted from the test pattern.
         gesturesDry = synthetic                            // a test host never posts a gesture (§7.4)
         testHotKeys = synthetic ? Self.testHotKeyTable() : nil
         menus = MenuMirror(server: server)
@@ -324,8 +308,6 @@ package final class StreamCoordinator {
         testMenuPID = hook.pid
         testMenuLine = hook.line
         self.remote = remote
-        // Direct Wireless is the listener's: built with it at start, replaced when it changes (adopt).
-        server.setPeerToPeer(config.directWireless)
         stage = VirtualStage(sizer: sizer, catalog: catalog)
         // Sill's own motion is Sill's: the server counts each device's input, the injector notes
         // each post just before it (and a synthetic host posts nothing: the test pattern is not the
@@ -335,14 +317,12 @@ package final class StreamCoordinator {
         injector.dryRun = synthetic
         injector.testLog = synthetic && inputLog.on
         stage.onWarp = { [pointer] in pointer.sillMoved() }
-        // The identity's TXT record (its tag, and `p` on a TLS home door) must be in the first
-        // registration: set before `server.start()`.
-        remote?.attach(server: server, status: status, macName: macName, requirePairing: config.requirePairing)
+        remote?.attach(server: server, status: status, macName: macName)
         catalog.preferMainDisplay = virtualDisplay   // the Desktop source must never capture the virtual display
         stage.onLost = { [weak self] in Task { @MainActor in await self?.stageLost() } }
         status.update { $0.synthetic = synthetic; $0.virtualDisplayOn = config.virtualDisplay }
         // Every change of the snapshot re-publishes the devices' settings state (deduplicated, so
-        // the once-a-second stats send nothing). One before `server.start()` reaches nobody, and
+        // the once-a-second stats send nothing). One before the door starts reaches nobody, and
         // every device gets a fresh state in `sendCatalog`, so early calls are harmless.
         status.onChange = { [weak self] in self?.publishSettings() }
         menus.prepare = { [weak self] in await self?.focusForMenus() ?? true }
@@ -350,22 +330,19 @@ package final class StreamCoordinator {
         menus.onSubscribersChanged = { [weak self] any in self?.watchFrontmostApp(any) }
         catalog.onPolled = { [weak self] in self?.menusPolled() }
 
-        server.onClientConnected = { [weak self] connection, route, link in
+        server.onClientConnected = { [weak self] connection, route in
             Task { @MainActor in
                 guard let self else { return }
                 let id = ObjectIdentifier(connection)
                 self.routes[id] = route
-                // A paired device shows its paired name until its own stats arrive, and a remote one
-                // its route; a home device its link (Wired, Wi-Fi, Direct) as soon as it is known.
+                // A paired device shows its paired name until its own stats arrive, and its route.
                 self.status.update {
                     $0.devices.append(HostStatusSnapshot.Device(id: id, endpoint: "\(connection.endpoint)", name: route.pairedName,
-                                                                route: link, remoteRoute: route.label))
+                                                                remoteRoute: route.label))
                 }
-                // A paired key's session, at either door: the pane's "last connected", and over the
-                // cable the iPhone or iPad the key runs on (learned once).
+                // A paired key's session: the pane's "last connected".
                 if let fp = route.fingerprint, route.pairedName != nil {
-                    let words = route.label ?? Self.homeRouteWords(route, link: link)
-                    self.remote?.sessionStarted(fingerprint: fp, route: words, cableDevice: route.cableDevice)
+                    self.remote?.sessionStarted(fingerprint: fp, route: route.label ?? "by address")
                 }
                 // Home or away before its catalog: its settings state says which quality it sets.
                 self.routesChanged(joined: id, endpoint: "\(connection.endpoint)")
@@ -394,7 +371,6 @@ package final class StreamCoordinator {
                 let id = ObjectIdentifier(connection)
                 self.gestureArrivals[id] = nil
                 self.routes[id] = nil
-                self.lastPairingWanted[id] = nil
                 self.connections[id] = nil
                 self.lastPublished[id] = nil
                 self.linkReports[id] = nil
@@ -463,29 +439,6 @@ package final class StreamCoordinator {
         // Status for the menu bar app. The server's callbacks hop here from its network queue; the
         // stats tick runs on the main queue, which under the CLI's dispatchMain is drained by a
         // worker thread, so it hops too instead of assuming main-actor isolation (that traps).
-        server.onListenerState = { [weak self] state in
-            let network: HostStatusSnapshot.Network
-            switch state {
-            case .ready: network = .registering          // refined in `listenerChanged`
-            case .waiting(let e): network = .waiting("\(e)")
-            case .failed(let e): network = .failed("\(e)")
-            default: return
-            }
-            Task { @MainActor in self?.listenerChanged(network) }
-        }
-        server.onServiceRegistered = { [weak self] name in
-            Task { @MainActor in self?.serviceRegistered(name) }
-        }
-        // Display only: the menu card's word for how the device reaches this Mac.
-        server.onClientRouteChanged = { [weak self] connection, route in
-            let id = ObjectIdentifier(connection)
-            Task { @MainActor in
-                self?.status.update {
-                    guard let i = $0.devices.firstIndex(where: { $0.id == id }) else { return }
-                    $0.devices[i].route = route
-                }
-            }
-        }
         // A device's hello names it before its first stats (a second later): the card shows
         // "iPad (iPad14,1)" from the first moment instead of an address. Its stats replace it, as
         // they always did; a remote device keeps its paired name meanwhile.
@@ -527,45 +480,6 @@ package final class StreamCoordinator {
         }
     }
 
-    /// How the Devices pane says a paired device last connected at home: "over the USB cable",
-    /// "on this Mac", "directly" (peer-to-peer Wi-Fi), "over Wi‑Fi", "over Ethernet", else "at home".
-    static func homeRouteWords(_ route: ClientRoute, link: ClientLink.Route?) -> String {
-        if route.cableDevice != nil { return "over the USB cable" }
-        if route.origin == .loopback { return "on this Mac" }
-        switch link {
-        case .direct?: return "directly"
-        case .wifi?: return "over Wi\u{2011}Fi"
-        case .wired?: return "over Ethernet"
-        case nil: return route.origin == .direct ? "directly" : "at home"
-        }
-    }
-
-    /// The listener is up, waiting or failed. Up means registering until Bonjour confirms a name,
-    /// or not advertised at all in synthetic mode; a late "ready" never undoes a registered name.
-    private func listenerChanged(_ network: HostStatusSnapshot.Network) {
-        status.update {
-            guard network == .registering else { $0.network = network; return }
-            if synthetic {
-                $0.network = .notAdvertised(port: Int(server.port ?? 0))
-            } else if case .advertising = $0.network {
-                return
-            } else {
-                $0.network = .registering
-            }
-        }
-    }
-
-    /// Bonjour registered this name (nil: the registration went away, to come back).
-    private func serviceRegistered(_ name: String?) {
-        status.update {
-            if let name {
-                $0.network = .advertising(name)
-            } else if case .advertising = $0.network {
-                $0.network = .registering
-            }
-        }
-    }
-
     /// `preselect` is the optional command-line match; without it nothing streams until a client picks.
     /// `promptForPermissions: false` (the app) asks for nothing at launch: no Accessibility alert,
     /// and no window list before Screen Recording is granted, because the first ScreenCaptureKit
@@ -590,14 +504,8 @@ package final class StreamCoordinator {
         }
         if virtualDisplay { enableVirtualDisplay() }
         catalog.start()
-        // The only startup line Direct Wireless adds, and only when it is on: the default path
-        // prints what it always printed.
-        if config.directWireless {
-            print("Direct wireless connection on: also advertised over peer-to-peer Wi-Fi (AWDL), which takes this Mac's Wi-Fi off its channel for up to ~100 ms twice a second.")
-        }
         if let testMenuLine { print(testMenuLine) }   // TEST ONLY, and only with SILL_TEST_MENU_PID set
-        server.start()
-        remote?.apply(config)        // the remote door, when Remote Access is on (or a pairing window opens later)
+        remote?.apply(config)        // the door, when Remote Access is on (or a pairing window opens later)
         if promptForPermissions || CGPreflightScreenCaptureAccess() { await catalog.refreshWindows() }
         if let match = preselect?.lowercased(),
            let w = catalog.infos.first(where: { $0.appName.lowercased().contains(match) || $0.title.lowercased().contains(match) }) {
@@ -753,12 +661,8 @@ package final class StreamCoordinator {
         let old = config
         guard next != old else { return }
         config = next
-        // The listener's, not the pipeline's: StreamServer replaces it and connected devices keep streaming.
-        if old.directWireless != next.directWireless { server.setPeerToPeer(next.directWireless) }
-        // The doors', not the pipeline's: RemoteAccess starts, stops or moves the remote door, and
-        // Require pairing changes who the home door admits (and its TXT record).
-        if old.remoteAccess != next.remoteAccess || old.remotePort != next.remotePort || old.internetAccess != next.internetAccess
-            || old.requirePairing != next.requirePairing {
+        // The door's, not the pipeline's: RemoteAccess starts, stops or moves it.
+        if old.remoteAccess != next.remoteAccess || old.remotePort != next.remotePort {
             remote?.apply(next)
         }
         catalog.preferMainDisplay = next.virtualDisplay   // the Desktop source must never capture the virtual display
@@ -776,14 +680,6 @@ package final class StreamCoordinator {
     package func retryVirtualDisplay() async {
         enableVirtualDisplay()
         if virtualDisplay, case .window = active { await select(active) }
-    }
-
-    /// The app keeps running when the Bonjour listener fails, with the failure in its menu; the
-    /// CLI exits as it always has. Call before `start`.
-    package func keepRunningOnListenerFailure() {
-        server.onListenerFailed = { [weak self] error in
-            Task { @MainActor in self?.status.update { $0.network = .failed("\(error)") } }
-        }
     }
 
     /// Windows in the catalog's last look, for the CLI's startup line.
@@ -960,25 +856,9 @@ package final class StreamCoordinator {
             await applyViewportToActiveWindow()
             if flipWaited { await applyPending() }
         case .pairingWanted:
-            // "Show your pairing code" (Pair This iPad…): only from a device near the Mac (the home
-            // door, from loopback, this network or peer-to-peer Wi-Fi), once per 30 s per connection.
-            // At a TLS home door only from an unpaired session (Require pairing off), which goes
-            // through the ask rule; a paired session's is ignored.
-            let id = ObjectIdentifier(connection)
-            guard let remote, case .home(let origin, let peer)? = routes[id], [.loopback, .lan, .direct].contains(origin) else { return }
-            if server.homeTLS, peer.map({ remote.isPaired($0.fingerprint) }) ?? true { return }
-            let now = CFAbsoluteTimeGetCurrent()
-            if let last = lastPairingWanted[id], now - last < 30 { return }
-            lastPairingWanted[id] = now
-            var session: (fingerprint: Data, source: String, display: String, from: String, fromThisMac: Bool)?
-            if server.homeTLS, let peer, let s = Door.source(of: connection) {
-                let thisMac = DoorPolicy.isFromThisMac(source: s.bytes, ownAddresses: InterfaceSnapshot.ownAddresses())
-                let source: String
-                if case .hostPort(let host, _) = connection.endpoint { source = StreamServer.addressText(host).text } else { source = s.display }
-                session = (peer.fingerprint, source, s.display,
-                           origin == .direct ? "nearby" : (thisMac || origin == .loopback ? "on this Mac" : "on this network"), thisMac)
-            }
-            remote.pairingWanted(by: deviceName(connection), session: session)
+            // "Show your pairing code" (Pair This iPad…) came from a device near the Mac at an
+            // upstream home door. This host has no home door, so it is never honoured.
+            return
         case .changeSettings:
             // A device's settings control. No `await` in this case: the answer leaves in request
             // order, per device and across devices, and before any restart (setTarget schedules the

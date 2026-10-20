@@ -6,7 +6,7 @@ M = [
     ("172.16/12 as 172.16/8", "(a[0] == 172 && a[1] & 0xF0 == 16)", "(a[0] == 172 && a[1] >= 16)"),
     ("on-link ignores the arrival interface", "let own = arrival.flatMap { a in kind == .lan || kind == .other ? a : nil }", "let own: String? = nil"),
     ("home door admits vpn", "o == .loopback || o == .direct || o == .lan", "o == .loopback || o == .direct || o == .lan || o == .vpn"),
-    ("remote door ignores the internet switch", "case .internet: return internetAccess", "case .internet: return true"),
+    ("remote door ignores the internet switch", "case .internet, .direct: return false", "case .direct: return false\n        case .internet: return true"),
     ("remote door admits direct", "case .direct: return false", "case .direct: return true"),
     ("no unmapping of IPv4-mapped sources", "if b[0..<10].allSatisfy({ $0 == 0 }) && b[10] == 0xFF && b[11] == 0xFF { return Array(b[12...]) }", ""),
     ("link-local before the tunnel rule", "        switch kind {\n        case .peerToPeer: return .direct\n        case .tunnel: return .vpn\n        default: break\n        }\n        if IPBytes.isLinkLocal(source) { return .lan }",

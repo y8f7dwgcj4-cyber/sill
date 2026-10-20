@@ -71,9 +71,7 @@ expect("unknown arrival: 100.64/10 on-link of bridge0 (any LAN interface)", c("1
 expect("an unparseable source is internet", c("not-an-address"), .internet)
 // The doors
 let all: [P.Origin] = [.loopback, .direct, .vpn, .lan, .internet]
-check("home door: loopback, direct and lan only", all.filter(P.homeAdmits) == [.loopback, .direct, .lan])
-check("remote door, internet off: loopback, vpn, lan", all.filter { P.remoteAdmits($0, internetAccess: false) } == [.loopback, .vpn, .lan])
-check("remote door, internet on: loopback, vpn, lan, internet; never direct", all.filter { P.remoteAdmits($0, internetAccess: true) } == [.loopback, .vpn, .lan, .internet])
+check("the door: loopback, vpn, lan; never direct or the internet", all.filter(P.remoteAdmits) == [.loopback, .vpn, .lan])
 check("labels", P.label(.vpn, interface: "utun4", serviceName: "Tailscale") == "through Tailscale" && P.label(.vpn, interface: "utun6", serviceName: nil) == "through your VPN"
       && P.label(.internet, interface: nil, serviceName: nil) == "over the internet" && P.label(.lan, interface: "en0", serviceName: nil) == "by address"
       && P.label(.loopback, interface: nil, serviceName: nil) == "by address" && P.label(.direct, interface: "awdl0", serviceName: nil) == nil)

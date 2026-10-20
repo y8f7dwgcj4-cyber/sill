@@ -1,7 +1,7 @@
 import CoreGraphics
 
-/// The host's knobs, as one value. The CLI streams with `standard` (plus its --virtual-display and
-/// --direct-wireless flags); the menu bar app starts from the same values and lets Settings change
+/// The host's knobs, as one value. The CLI streams with `standard` (plus its --virtual-display
+/// flag); the menu bar app starts from the same values and lets Settings change
 /// them while it runs. Change `standard`, rebuild, measure: both pick it up.
 ///
 /// The coordinator takes a new value only between pipelines (inside `select`), so one pipeline
@@ -24,13 +24,6 @@ package struct HostConfig: Equatable, Sendable {
     /// A picked window streams from its own HiDPI virtual display (see VirtualStage). Needs the
     /// AppKit event loop, so the CLI turns it on only with --virtual-display.
     package var virtualDisplay: Bool
-    /// Direct Wireless Connection: peer-to-peer Wi-Fi (AWDL) on the listener and its Bonjour
-    /// registration, so a device with no network in common can find and reach the Mac. Off by
-    /// default: while it is on the kernel keeps AWDL up and the Mac's one radio leaves its Wi-Fi
-    /// channel up to ~97 ms every 524 ms (CLAUDE.md, trackpad stutter). The listener's, not the
-    /// pipeline's: a change replaces the listener (StreamServer.setPeerToPeer) and never restarts
-    /// the stream.
-    package var directWireless: Bool
     /// Remote access: the remote door runs (TLS 1.3, paired devices only; RemoteAccess). The Mac's
     /// alone: absent from StreamSettings, HostSettingsChange, DeviceSettings.accepted, `applying`
     /// and `restartNeeded`, so no device can widen who reaches the Mac.
@@ -38,17 +31,6 @@ package struct HostConfig: Equatable, Sendable {
     /// The remote door's port. 7455 in `standard`; 0 = any free port (SillHost --remote without a
     /// port). Never another port by itself: saved addresses depend on it.
     package var remotePort: Int
-    /// The remote door also admits sources outside this Mac's networks and VPNs (a router port
-    /// forward).
-    package var internetAccess: Bool
-    /// Require pairing: the home door admits only paired keys (TLS either way;
-    /// docs/home-pairing-plan.md §4.1). The Mac's alone, like Remote Access: absent from
-    /// StreamSettings, HostSettingsChange, DeviceSettings.accepted, `applying` and `restartNeeded`.
-    /// Counts only on a host whose home door speaks TLS (Sill.app; SillHost --pairing); the CLI's
-    /// default plain door has no pairing at all. In Sill.app it is kept with the trust list (the
-    /// identity store), never in UserDefaults or a launch argument: any process of this user can
-    /// write those, and this is the one switch that would let an unpaired key in.
-    package var requirePairing: Bool
     /// Share clipboard with devices (docs/clipboard-plan.md, HostClipboard): a device that asks (kind
     /// 32) is sent the text copied on this Mac while it shares the clipboard, and its own text becomes
     /// this Mac's. The Mac's alone, like Remote Access: absent from StreamSettings,
@@ -58,8 +40,8 @@ package struct HostConfig: Equatable, Sendable {
 
     /// Every knob is required, so the compiler finds each place that builds one when a knob is added.
     package init(maxFPS: Int, captureScale: CGFloat, bitrate: Int, awayBitrate: Int, awayCaptureScale: CGFloat,
-                 prioritizeSpeed: Bool, virtualDisplay: Bool, directWireless: Bool, remoteAccess: Bool, remotePort: Int,
-                 internetAccess: Bool, requirePairing: Bool, shareClipboard: Bool) {
+                 prioritizeSpeed: Bool, virtualDisplay: Bool, remoteAccess: Bool, remotePort: Int,
+                 shareClipboard: Bool) {
         self.maxFPS = maxFPS
         self.captureScale = captureScale
         self.bitrate = bitrate
@@ -67,28 +49,20 @@ package struct HostConfig: Equatable, Sendable {
         self.awayCaptureScale = awayCaptureScale
         self.prioritizeSpeed = prioritizeSpeed
         self.virtualDisplay = virtualDisplay
-        self.directWireless = directWireless
         self.remoteAccess = remoteAccess
         self.remotePort = remotePort
-        self.internetAccess = internetAccess
-        self.requirePairing = requirePairing
         self.shareClipboard = shareClipboard
     }
 
     /// The spike's knobs, formerly the `let`s at the top of the CLI's main.swift, and the app's
-    /// defaults. Virtual display off in both until Noah flips it. Direct Wireless off in both
-    /// (Noah, 2026-09-24): AWDL costs every Wi-Fi stream its steadiness, and a shared network needs
-    /// none of it. Remote access and internet access off in both: only the Mac's own user widens
-    /// exposure. 7455 is unassigned at IANA and below the ephemeral range. Away from home, Low ·
-    /// Standard (Noah, 2026-09-25): a slow connection never starts at the home quality. Require
-    /// pairing on: a home door that speaks TLS admits only paired devices until the Mac's user says
-    /// otherwise. Share clipboard with devices on (2026-10-14): each device has its own switch too, and
-    /// a password manager's copies never go.
+    /// defaults. Virtual display off in both. Remote access off in both: only the Mac's own user
+    /// widens exposure. 7455 is unassigned at IANA and below the ephemeral range. Away from home,
+    /// Low · Standard: a slow connection never starts at the home quality. Share clipboard with
+    /// devices on: each device has its own switch too, and a password manager's copies never go.
     package static let standard = HostConfig(maxFPS: 120, captureScale: 2, bitrate: 15_000_000,
                                              awayBitrate: 4_000_000, awayCaptureScale: 1,
-                                             prioritizeSpeed: false, virtualDisplay: false, directWireless: false,
-                                             remoteAccess: false, remotePort: 7455, internetAccess: false,
-                                             requirePairing: true, shareClipboard: true)
+                                             prioritizeSpeed: false, virtualDisplay: false,
+                                             remoteAccess: false, remotePort: 7455, shareClipboard: true)
 
     /// The remote door's port when none is set.
     package static let defaultRemotePort = 7455
@@ -110,8 +84,8 @@ package struct HostConfig: Equatable, Sendable {
 
     /// What differs from `new`, for the log: "frame rate limit 120 → 60 fps, bitrate 15 → 8 Mbps
     /// per 60 fps, Retina → points, away bitrate 4 → 15 Mbps per 60 fps, away points → Retina, speed
-    /// off → on, virtual display off → on, direct wireless off → on, remote access off → on, remote
-    /// port 7455 → 7460, internet access off → on, require pairing on → off, share clipboard on → off".
+    /// off → on, virtual display off → on, remote access off → on, remote port 7455 → 7460, share
+    /// clipboard on → off".
     package func changes(to new: HostConfig) -> String {
         func onOff(_ b: Bool) -> String { b ? "on" : "off" }
         func scaleName(_ s: CGFloat) -> String { s >= 1.5 ? "Retina" : "points" }
@@ -123,11 +97,8 @@ package struct HostConfig: Equatable, Sendable {
         if awayCaptureScale != new.awayCaptureScale { parts.append("away \(scaleName(awayCaptureScale)) → \(scaleName(new.awayCaptureScale))") }
         if prioritizeSpeed != new.prioritizeSpeed { parts.append("speed \(onOff(prioritizeSpeed)) → \(onOff(new.prioritizeSpeed))") }
         if virtualDisplay != new.virtualDisplay { parts.append("virtual display \(onOff(virtualDisplay)) → \(onOff(new.virtualDisplay))") }
-        if directWireless != new.directWireless { parts.append("direct wireless \(onOff(directWireless)) → \(onOff(new.directWireless))") }
         if remoteAccess != new.remoteAccess { parts.append("remote access \(onOff(remoteAccess)) → \(onOff(new.remoteAccess))") }
         if remotePort != new.remotePort { parts.append("remote port \(remotePort) → \(new.remotePort)") }
-        if internetAccess != new.internetAccess { parts.append("internet access \(onOff(internetAccess)) → \(onOff(new.internetAccess))") }
-        if requirePairing != new.requirePairing { parts.append("require pairing \(onOff(requirePairing)) → \(onOff(new.requirePairing))") }
         if shareClipboard != new.shareClipboard { parts.append("share clipboard \(onOff(shareClipboard)) → \(onOff(new.shareClipboard))") }
         return parts.isEmpty ? "no change" : parts.joined(separator: ", ")
     }

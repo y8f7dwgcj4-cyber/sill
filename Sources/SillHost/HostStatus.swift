@@ -11,21 +11,6 @@ import StreamProtocol
 /// Not Sendable on purpose: it lives on the main actor with `HostStatus`, and marking these
 /// structs Sendable only produced warnings.
 package struct HostStatusSnapshot: Equatable {
-    /// The listener and its Bonjour registration.
-    package enum Network: Equatable {
-        case starting
-        /// Listening; Bonjour has not confirmed a name yet.
-        case registering
-        /// The name devices see. Bonjour renames on a clash ("Noah’s MacBook Pro (2)").
-        case advertising(String)
-        /// --synthetic: listening but deliberately off Bonjour; test clients use this port.
-        case notAdvertised(port: Int)
-        /// The listener waits for a usable network (no Wi-Fi or Ethernet, Local Network denied).
-        case waiting(String)
-        /// The listener failed; devices cannot reach this host until Sill restarts.
-        case failed(String)
-    }
-
     /// One connected device. The name and numbers come from its ClientStats, about once a second;
     /// nil until the first report.
     package struct Device: Equatable, Identifiable {
@@ -38,24 +23,18 @@ package struct HostStatusSnapshot: Equatable {
         /// -1 when that second had no sample (no frame arrived, no pong came back).
         package var frameAgeMs: Int?
         package var rttMs: Int?
-        /// How it reaches this Mac, as this Mac's side of its connection says (ClientLink.route): at
-        /// connect, then whenever the connection's path changes. Nil when the connection does not
-        /// say (loopback, a VPN, an interface of no known kind), and always on the remote door.
-        /// Shown, never acted on.
-        package var route: ClientLink.Route?
-        /// Nil on the home door; "through Tailscale", "through your VPN", "over the internet" or "by
-        /// address" on the remote door. The card shows it instead of `route` (StatusText).
+        /// "through Tailscale" or "by address": how the door saw it arrive. The card shows it.
         package var remoteRoute: String?
         /// Its link while it does not keep up (LinkJudge, docs/remote-bundle-plan.md §6); nil while it
         /// does. The card names it.
         package var link: LinkStatus?
 
         package init(id: ObjectIdentifier, endpoint: String, name: String? = nil, fps: Int? = nil,
-                     frameAgeMs: Int? = nil, rttMs: Int? = nil, route: ClientLink.Route? = nil, remoteRoute: String? = nil,
+                     frameAgeMs: Int? = nil, rttMs: Int? = nil, remoteRoute: String? = nil,
                      link: LinkStatus? = nil) {
             self.id = id; self.endpoint = endpoint; self.name = name
             self.fps = fps; self.frameAgeMs = frameAgeMs; self.rttMs = rttMs
-            self.route = route; self.remoteRoute = remoteRoute; self.link = link
+            self.remoteRoute = remoteRoute; self.link = link
         }
     }
 
@@ -101,7 +80,6 @@ package struct HostStatusSnapshot: Equatable {
         }
     }
 
-    package var network: Network = .starting
     package var devices: [Device] = []
     package var stream: Stream?
     /// Frames the encoder put out in the last stats second (the stats line's `enc.out`).
@@ -124,7 +102,7 @@ package struct HostStatusSnapshot: Equatable {
     /// Why the last pick streamed the real window instead of the virtual display; cleared by the
     /// next successful stage.
     package var lastStageFailure: String?
-    /// --synthetic: the Desktop is a test pattern and the host is not advertised.
+    /// --synthetic: the Desktop is a test pattern.
     package var synthetic = false
     /// Remote access, on a host with an identity (Sill.app, SillHost --remote); nil otherwise.
     package var remote: RemoteStatus?
@@ -133,9 +111,8 @@ package struct HostStatusSnapshot: Equatable {
     /// and the Streaming pane say so.
     package var away = false
 
-    /// Devices connected through the remote door: while any is, the app keeps the Mac from idle
-    /// sleep (it could not be woken from away).
-    package var remoteDeviceCount: Int { devices.filter { $0.remoteRoute != nil }.count }
+    /// Devices connected through the door (every device: it is the only door).
+    package var remoteDeviceCount: Int { devices.count }
 
     package init() {}
 }
@@ -147,31 +124,9 @@ extension HostStatusSnapshot.Stream {
     }
 }
 
-/// Both doors' pairing and the remote door as the Mac's panes and menu show them. Never a pairing
+/// Pairing and the door as the Mac's panes and menu show them. Never a pairing
 /// code or secret: those reach the app and the CLI only through `RemoteAccess.onPairingOffer`.
 package struct RemoteStatus: Equatable {
-    /// The home door (docs/home-pairing-plan.md §4.10): plain (the CLI without --pairing), TLS with
-    /// pairing required or open to any device, or unavailable, with why (no identity: the keychain
-    /// failed, so there is no home listener at all).
-    package enum HomeDoor: Equatable {
-        case plain, pairingRequired, open
-        case unavailable(String)
-    }
-    /// A device asked to pair and no window shows its code by itself (the Mac locked, or the ask
-    /// limits), or a window shows its code (one its ask opened, or one the Mac's user opened from
-    /// this request): the menu's "‹device› Wants to Pair", for 5 minutes after the ask, less once
-    /// that device pairs or, for "showing", once the window closes. Never for an ask from this Mac.
-    package struct PairingRequest: Equatable {
-        /// The device's own name, cleaned: "iPad (iPad14,1)".
-        package var name: String
-        package var at: Date
-        /// "showing" (a window it opened is up), "locked" or "limit" (quiet, or too many windows).
-        package var reason: String
-        package init(name: String, at: Date, reason: String) { self.name = name; self.at = at; self.reason = reason }
-        /// How long the menu shows it.
-        package static let shownFor: TimeInterval = 300
-    }
-
     package enum Listener: Equatable {
         case off
         case listening(Int)
@@ -179,20 +134,9 @@ package struct RemoteStatus: Equatable {
         case portInUse(Int)
         case failed(String)
     }
-    /// The router's own internet address, asked read-only while the internet switch is on.
-    package enum Router: Equatable {
-        case off, asking
-        case address(String)
-        /// The router's address is itself in 100.64/10: the provider shares it among many homes.
-        case carrierNAT(String)
-        /// The router sits behind another router (a private address, or kDNSServiceErr_DoubleNAT).
-        case doubleNAT
-        case noAnswer
-    }
     package enum Pairing: Equatable {
         case closed
-        /// `byDevice`: a device opened it by asking (shown in front without the keyboard).
-        case open(requestedBy: String?, expiresAt: Date, triesLeft: Int, lastWrongFrom: String?, byDevice: Bool)
+        case open(requestedBy: String?, expiresAt: Date, triesLeft: Int, lastWrongFrom: String?)
         /// The last window paired this device (its name).
         case paired(String)
         /// Five wrong codes.
@@ -201,36 +145,24 @@ package struct RemoteStatus: Equatable {
     }
 
     package var remoteAccess: Bool
-    package var internetAccess: Bool
     package var listener: Listener
     /// In dial order, as kind 18 carries them.
     package var addresses: [MacAddress]
     /// Named VPN services with no address: "Tailscale" shows as "Tailscale — Not connected".
     package var vpnDown: [String]
-    /// This network's address, for the port-forward instruction and the typed pairing path.
+    /// This network's address, for the typed pairing path.
     package var lanAddress: String?
-    package var router: Router
-    /// The address name setting, as shown.
-    package var addressName: String
     package var pairing: Pairing
     package var paired: [PairedDeviceSummary]
     /// "The keychain couldn’t be used: …" when the identity could not be loaded.
     package var identityProblem: String?
-    package var homeDoor: HomeDoor
-    package var pairingRequest: PairingRequest?
-    /// When the home door last refused a source's third plain try within a minute (an older Sill,
-    /// DoorPolicy.olderSillTry: a TLS 1.2 client fails the same way, but once), for the menu's
-    /// "An iPhone or iPad Needs Sill Updated" (10 minutes from it).
-    package var olderDeviceAt: Date?
 
-    package init(remoteAccess: Bool = false, internetAccess: Bool = false, listener: Listener = .off, addresses: [MacAddress] = [],
-                 vpnDown: [String] = [], lanAddress: String? = nil, router: Router = .off, addressName: String = "",
-                 pairing: Pairing = .closed, paired: [PairedDeviceSummary] = [], identityProblem: String? = nil,
-                 homeDoor: HomeDoor = .plain, pairingRequest: PairingRequest? = nil, olderDeviceAt: Date? = nil) {
-        self.remoteAccess = remoteAccess; self.internetAccess = internetAccess; self.listener = listener
-        self.addresses = addresses; self.vpnDown = vpnDown; self.lanAddress = lanAddress; self.router = router
-        self.addressName = addressName; self.pairing = pairing; self.paired = paired; self.identityProblem = identityProblem
-        self.homeDoor = homeDoor; self.pairingRequest = pairingRequest; self.olderDeviceAt = olderDeviceAt
+    package init(remoteAccess: Bool = false, listener: Listener = .off, addresses: [MacAddress] = [],
+                 vpnDown: [String] = [], lanAddress: String? = nil,
+                 pairing: Pairing = .closed, paired: [PairedDeviceSummary] = [], identityProblem: String? = nil) {
+        self.remoteAccess = remoteAccess; self.listener = listener
+        self.addresses = addresses; self.vpnDown = vpnDown; self.lanAddress = lanAddress
+        self.pairing = pairing; self.paired = paired; self.identityProblem = identityProblem
     }
 }
 

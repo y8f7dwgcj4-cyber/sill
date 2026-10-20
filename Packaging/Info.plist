@@ -30,14 +30,10 @@
 	<string>14.0</string>
 	<key>LSUIElement</key>
 	<true/>
-	<key>NSBonjourServices</key>
-	<array>
-		<string>_sill._tcp</string>
-	</array>
 	<key>NSHumanReadableCopyright</key>
 	<string>Sill is free and open source.</string>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>Sill makes this Mac visible to your iPhone and iPad on the same network so they can stream its windows.</string>
+	<string>Sill accepts connections from your paired iPhone and iPad through Tailscale so they can stream its windows.</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
 	<key>NSSupportsAutomaticTermination</key>

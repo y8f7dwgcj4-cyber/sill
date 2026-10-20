@@ -307,19 +307,6 @@ enum WindowPlacement {
         }
     }
 
-    /// A window a device put up (a pairing window it asked for, the cable notice): in front of every
-    /// app's windows (over a full-screen app too, with `.fullScreenAuxiliary` in its collection
-    /// behavior), off the virtual display, without activating Sill or taking the keyboard, so a
-    /// device's request can never swallow what is being typed in another app. A click makes it key.
-    /// (docs/home-pairing-plan.md §6.3)
-    static func showInFront(_ window: NSWindow) {
-        if onNoUsefulScreen(window), let area = NSScreen.screens.first?.visibleFrame {
-            let size = window.frame.size
-            window.setFrameOrigin(NSPoint(x: area.midX - size.width / 2, y: area.midY - size.height / 2))
-        }
-        window.orderFrontRegardless()
-    }
-
     private static func onNoUsefulScreen(_ window: NSWindow) -> Bool {
         guard let screen = window.screen else { return true }
         guard let id = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID else { return false }

@@ -152,7 +152,7 @@ check("9 a tagless row under another name is no saved Mac: an open door's reads 
 
 // A device-opened window closes; a later proof hears kind 20's reason (PairingWindow.closedReason);
 // the home card shows DiscoveryPolicy.homeRefusal's words for it. Where the close keeps the asker
-// quiet (AskLimits.quiets: its next tap gets no new code), the words must send the person to the
+// quiet (`quiets` below: its next tap gets no new code), the words must send the person to the
 // Sill menu on the Mac first; "Tap it for a new one" is for a close that quiets nobody. A reason
 // several closes share ("closed": the Mac's Cancel, and a code another device used) takes the words
 // of the strictest.
@@ -164,20 +164,22 @@ func cardWords(_ reason: String) -> String {
     case .closed: return P.HomeCopy.closed(mac: "Mac mini")
     }
 }
-let closes: [PairingWindow.CloseReason] = [.used, .expired, .stopped, .cancelled, .withdrawn, .none]
+let closes: [PairingWindow.CloseReason] = [.used, .expired, .stopped, .cancelled, .none]
+// This host has no ask, so no close keeps a device quiet; upstream's rule was cancelled or stopped.
+func quiets(_ r: PairingWindow.CloseReason) -> Bool { r == .cancelled || r == .stopped }
 var quietHonest = 0, quietAll = 0
 for close in closes { for byThisProof in [true, false] {
     quietAll += 1
     let reason = PairingWindow.closedReason(close, stoppedByThisProof: byThisProof)
     let words = cardWords(reason)
     let menuFirst = words.contains("choose Pair iPhone or iPad\u{2026} in the Sill menu, then tap Mac mini again")
-    if AskLimits.quiets(close) ? menuFirst : (menuFirst || words.hasSuffix("for a new one.")) { quietHonest += 1 }
+    if quiets(close) ? menuFirst : (menuFirst || words.hasSuffix("for a new one.")) { quietHonest += 1 }
     else { print("  \(close) (\(byThisProof)): \(reason) → \(words)") }
 } }
 check("every close (\(quietHonest) of \(quietAll)): the card never says a tap alone gets a new code where the Mac keeps the device quiet",
       quietHonest == quietAll)
 check("after a window ran out, the card's \"Tap Mac mini for a new one.\" holds: an expiry quiets nobody",
-      cardWords(PairingWindow.closedReason(.expired, stoppedByThisProof: false)) == P.HomeCopy.expired(mac: "Mac mini") && !AskLimits.quiets(.expired))
+      cardWords(PairingWindow.closedReason(.expired, stoppedByThisProof: false)) == P.HomeCopy.expired(mac: "Mac mini") && !quiets(.expired))
 check("the literals homeRefusal reads are the wire's", PairResult.code == "code" && PairResult.stopped == "stopped" && PairResult.expired == "expired")
 
 // MARK: 11. The reconnect meets a door that now asks devices to pair (the security review, 2026-09-27)

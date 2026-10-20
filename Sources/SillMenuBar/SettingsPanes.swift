@@ -112,31 +112,6 @@ private struct GeneralPane: View {
                         .foregroundStyle(.orange)
                 }
             }
-            Section {
-                LabeledContent("Visible on your network as") { Text(networkName) }
-            } footer: {
-                HStack(spacing: 4) {
-                    Text("This is the Mac’s name.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                    Button("Change It in Sharing Settings…") {
-                        if let url = URL(string: "x-apple.systempreferences:com.apple.Sharing-Settings.extension") {
-                            NSWorkspace.shared.open(url)
-                        }
-                    }
-                    .buttonStyle(.link)
-                    .font(.footnote)
-                    Spacer(minLength: 0)
-                }
-            }
-            // How devices reach this Mac, so beside its name on the network. Applies at once without
-            // restarting the stream (the listener is replaced); enabled in test pattern mode too,
-            // where it is saved and changes only the listener.
-            Section {
-                Toggle("Direct wireless connection", isOn: $settings.config.directWireless)
-            } footer: {
-                Footnote("Lets your iPhone and iPad connect when they’re near this Mac, even without a shared Wi\u{2011}Fi network, the way AirDrop does. While it’s on, this Mac’s Wi\u{2011}Fi keeps stepping away from your network, so streaming over Wi\u{2011}Fi can stutter. Anyone nearby with Sill can find this Mac; only devices you paired can connect, unless Require pairing is off.")
-            }
             // The clipboard both ways (HostClipboard): at once, no restart. Each device has its own
             // switch too. macOS's answer is read with the permissions (once a second while this pane
             // shows, and when Sill becomes active), never in a preview.
@@ -161,16 +136,6 @@ private struct GeneralPane: View {
         }
     }
 
-    private var networkName: String {
-        let snapshot = model.coordinator?.status.snapshot ?? HostStatusSnapshot()
-        switch snapshot.network {
-        case .advertising(let name): return "“\(name)”"
-        case .notAdvertised: return "Not advertised (test pattern mode)"
-        case .failed: return "Not visible (the listener failed)"
-        case .waiting: return "Not yet (waiting for the network)"
-        case .starting, .registering: return "Registering…"
-        }
-    }
 }
 
 // MARK: Clipboard
@@ -338,11 +303,9 @@ private struct PermissionsPane: View {
 
     var body: some View {
         let permissions = model.permissions
-        let network = model.coordinator?.status.snapshot.network
         Form {
             Section {
                 PermissionRow(title: "Screen Recording", allowed: permissions.screenRecording,
-                              // Not "on this network": a device connected over Direct Wireless shares none.
                               explanation: "Lets Sill capture the windows you pick on your iPhone or iPad. Nothing is recorded or saved; frames go straight to your devices.",
                               button: model.settings.askedScreenRecording ? "Open System Settings…" : "Allow…") {
                     permissions.requestScreenRecording()
@@ -362,16 +325,6 @@ private struct PermissionsPane: View {
                     }
                 }
             }
-            if Self.networkNeedsHelp(network) {
-                Section {
-                    LabeledContent {
-                        Button("Open Local Network…") { permissions.openPrivacyPane("Privacy_LocalNetwork") }
-                    } label: {
-                        Text("Local Network")
-                        Text("If your iPhone or iPad can’t find this Mac, allow Sill in Privacy & Security › Local Network.")
-                    }
-                }
-            }
             if permissions.allGranted {
                 Section {
                     Label("You’re all set. Open Sill on your iPhone or iPad.", systemImage: "checkmark.seal.fill")
@@ -380,12 +333,6 @@ private struct PermissionsPane: View {
         }
     }
 
-    private static func networkNeedsHelp(_ network: HostStatusSnapshot.Network?) -> Bool {
-        switch network {
-        case .waiting, .failed: return true
-        default: return false
-        }
-    }
 }
 
 private struct PermissionRow: View {

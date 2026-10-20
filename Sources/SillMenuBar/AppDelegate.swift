@@ -24,7 +24,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var settingsWindow: SettingsWindowController?
     private var logWindow: LogWindowController?
     private var pairingWindow: PairDeviceWindowController?
-    private var cableNotice: CableNoticeWindowController?
     private var terminating = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -37,9 +36,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         model.showSettings = { [weak self] tab in self?.showSettings(tab: tab) }
         model.settingsWindowForTests = { [weak self] in self?.settingsWindow }
         model.showLog = { [weak self] in self?.showLog() }
-        // An offer can come from a device's request (its ask at the home door, or kind 21), and the
-        // cable notice from a device pairing over the cable, each on a main-actor hop: showing a
-        // window there is fine, it runs no modal loop.
+        // An offer comes on a main-actor hop: showing a window there is fine, it runs no modal loop.
         model.showPairing = { [weak self] offer in self?.showPairing(offer) }
         model.bringPairingForward = { [weak self] in
             guard let window = self?.pairingWindow, window.isShowing else { return false }
@@ -51,7 +48,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             window.close()          // windowWillClose cancels the pairing, as Cancel does
             return true
         }
-        model.showCableNotice = { [weak self] notice in self?.showCableNotice(notice) }
         // Always, not only with the virtual display on: Settings can turn it on at any time, and a
         // kill must then still put the streamed window back.
         HostShutdown.install { [model] in model.coordinator }
@@ -124,12 +120,5 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let controller = pairingWindow ?? PairDeviceWindowController(model: model)
         pairingWindow = controller
         controller.show(offer)
-    }
-
-    /// The one cable notice window, beside the pairing window: made once, shown for each pairing.
-    func showCableNotice(_ notice: CableNotice) {
-        let controller = cableNotice ?? CableNoticeWindowController(model: model)
-        cableNotice = controller
-        controller.show(notice)
     }
 }

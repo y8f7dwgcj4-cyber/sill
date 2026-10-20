@@ -28,34 +28,20 @@ let synthetic = CommandLine.arguments.contains("--synthetic")
 let virtualDisplay = CommandLine.arguments.contains("--virtual-display")
 config.virtualDisplay = virtualDisplay
 
-// `SillHost --direct-wireless`: also advertise over, and accept connections from, peer-to-peer
-// Wi-Fi (AWDL), so a device with no network in common can connect. Off by default: while it is on
-// the Mac's radio leaves its Wi-Fi channel up to ~97 ms every 524 ms, which is the stutter in
-// CLAUDE.md. A device can still turn it on or off; that lasts until SillHost quits.
-config.directWireless = CommandLine.arguments.contains("--direct-wireless")
-
 // `SillHost --no-clipboard`: share nothing of the clipboard with devices for this run (kind 32,
 // docs/clipboard-plan.md). On by default, as in Sill.app: a device whose Share Clipboard is on is
 // sent the text copied on this Mac while it is connected, and its own text becomes this Mac's.
 // A --synthetic host shares a pasteboard of its own, never this Mac's clipboard.
 config.shareClipboard = !CommandLine.arguments.contains("--no-clipboard")
 
-// `SillHost --remote[=PORT]`: the remote door for this run (TLS 1.3, paired devices only), on
-// PORT or any free port, so it never collides with Sill.app's 7455. A new in-memory identity and
-// trust list every run. A pairing window is always open (a fresh one after each use or expiry);
-// its code and link are printed here, to this process's stdout only, and again when a device
-// near the Mac asks (kind 21). `--internet` also admits sources outside this Mac's networks and
-// VPNs. TEST ONLY: SILL_TEST_REMOTE_DIR=<dir> keeps the identity and pairings in a 0700
-// directory, on a --synthetic host only.
+// `SillHost --remote[=PORT]`: the door for this run (TLS 1.3, paired devices only), on PORT or
+// any free port, so it never collides with Sill.app's 7455. A new in-memory identity and trust
+// list every run. A pairing window is always open (a fresh one after each use or expiry); its code
+// and link are printed here, to this process's stdout only. TEST ONLY: SILL_TEST_REMOTE_DIR=<dir>
+// keeps the identity and pairings in a 0700 directory, on a --synthetic host only.
 let remoteFlag = CommandLine.arguments.first { $0 == "--remote" || $0.hasPrefix("--remote=") }
-let internetFlag = CommandLine.arguments.contains("--internet")
-if internetFlag && remoteFlag == nil {
-    print("--internet needs --remote.")
-    exit(2)
-}
 if let remoteFlag {
     config.remoteAccess = true
-    config.internetAccess = internetFlag
     if remoteFlag.hasPrefix("--remote=") {
         guard let p = Int(remoteFlag.dropFirst("--remote=".count)), (1024...65535).contains(p) else {
             print("--remote=PORT takes a port from 1024 to 65535.")
@@ -67,25 +53,10 @@ if let remoteFlag {
     }
 }
 
-// `SillHost --pairing`: the home door speaks TLS 1.3 with both keys pinned and pairing required
-// (docs/home-pairing-plan.md §5), as Sill.app's does: a device pairs once, over the USB cable by
-// itself or with the code or link printed here. A throwaway identity (the one --remote uses when
-// both are given); a pairing window is always open, and its code goes to this process's stdout
-// only. Without it the home door stays plain and open, as it always was: a development host.
-let pairingFlag = CommandLine.arguments.contains("--pairing")
-
 // `SillHost --print-reachability`: the addresses this Mac would give devices away from home, as
 // its Remote Access pane lists them, read once (read-only SystemConfiguration); then exits.
 if CommandLine.arguments.contains("--print-reachability") {
     for line in ReachabilityReport.lines() { print(line) }
-    exit(0)
-}
-
-// `SillHost --print-cable`: what the USB cable rule reads on this Mac (read-only IOKit and
-// CGSession): each interface it looks at, whether it is the cable to an iPhone or iPad, and whether
-// the console is unlocked; then exits.
-if CommandLine.arguments.contains("--print-cable") {
-    for line in CableReport.lines() { print(line) }
     exit(0)
 }
 
@@ -124,18 +95,16 @@ var coordinator: StreamCoordinator?
 func startHost() {
     Task { @MainActor in
         do {
-            let remote = config.remoteAccess || pairingFlag ? makeRemoteAccess() : nil
+            let remote = config.remoteAccess ? makeRemoteAccess() : nil
             let c = try StreamCoordinator(config: config, synthetic: synthetic, appKitLoop: virtualDisplay, remote: remote,
-                                          homePairing: pairingFlag, testHooks: true)
+                                          testHooks: true)
             coordinator = c
             await c.start(preselect: preselect)
-            if remote != nil, internetFlag {
-                print("Internet access on for this run: the remote door also admits paired devices from outside this Mac's networks and VPNs.")
-            }
+            if remote == nil { print("No door for devices: run with --remote to let a paired device connect.") }
             remote?.openPairing(requestedBy: nil)
             if synthetic { print("Synthetic mode: pick Desktop on the device (or from a test client) to stream a test pattern.") }
             if virtualDisplay { print("Virtual display mode: a picked window streams from its own HiDPI display; Ctrl-C puts it back.") }
-            print("\(c.windowCount) windows on screen. Advertising _sill._tcp on the local network.")
+            print("\(c.windowCount) windows on screen.")
             if c.active == .none { print("Nothing is streaming yet: pick a window from the iOS app. Ctrl-C to stop.") }
             Stats.shared.startPrinting()
         } catch {
@@ -146,9 +115,8 @@ func startHost() {
     }
 }
 
-/// --remote's and --pairing's identity and pairing: in memory (or, TEST ONLY on a --synthetic host,
-/// in SILL_TEST_REMOTE_DIR), with the code printed here whenever a window opens or is asked for
-/// again. With --pairing alone the window is the home door's only: no remote door, no addresses.
+/// --remote's identity and pairing: in memory (or, TEST ONLY on a --synthetic host, in
+/// SILL_TEST_REMOTE_DIR), with the code printed here whenever a window opens or is asked for again.
 @MainActor
 func makeRemoteAccess() -> RemoteAccess {
     var store: IdentityStore = MemoryIdentityStore()
@@ -159,19 +127,11 @@ func makeRemoteAccess() -> RemoteAccess {
     if let problem = remote.identityProblem { print("Remote access unavailable: \(problem)") }
     remote.reopensPairing = true
     remote.logsPairingWindows = false
-    remote.userWindowsOpenRemoteDoor = config.remoteAccess
     var first = true
     remote.onPairingOffer = { offer in
         if first {
             first = false
-            if config.remoteAccess {
-                print("Remote access for this run on port \(offer.port) (TLS, paired devices only). Pair with \(offer.groupedCode) or \(offer.url)")
-                if pairingFlag { print("Pairing required for this run (TLS on the home door).") }
-            } else {
-                print("Pairing required for this run (TLS on the home door). Pair with \(offer.groupedCode) or \(offer.url)")
-            }
-        } else if let who = offer.askedBy {
-            print("Pairing: \(who) asked; code \(offer.groupedCode) or \(offer.url)")
+            print("Remote access for this run on port \(offer.port) (TLS, paired devices only). Pair with \(offer.groupedCode) or \(offer.url)")
         } else {
             print("Pairing: \(offer.again ? "code" : "new code") \(offer.groupedCode) or \(offer.url)")
         }

@@ -27,9 +27,6 @@ import Security
 /// - The recognition key: a generic password, service `me.saffer.sill.remote`, account
 ///   `recognition-key`, 32 bytes.
 /// - The trust list: a generic password, same service, account `paired-devices`, JSON.
-/// - Require pairing: a generic password, same service, account `require-pairing`: "1", or "0."
-///   and a signature by the Mac's key (RequirePairingValue, docs/home-pairing-plan.md §4.8). A
-///   missing item, or one without that signature, reads as on, so deleting it only turns pairing on.
 ///
 /// **No migration from the login keychain — by design (the security review, 2026-09-27).** An
 /// earlier draft copied a Mac's existing legacy items into the data-protection keychain on the first
@@ -63,7 +60,6 @@ package final class KeychainIdentityStore: IdentityStore {
     static let service = "me.saffer.sill.remote"
     static let recognitionAccount = "recognition-key"
     static let pairedAccount = "paired-devices"
-    static let requirePairingAccount = "require-pairing"
 
     /// The data-protection access group, or nil for the legacy login keychain. Immutable.
     let accessGroup: String?
@@ -167,14 +163,6 @@ package final class KeychainIdentityStore: IdentityStore {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
         try write(try encoder.encode(devices), account: Self.pairedAccount, label: "\(Self.label) (paired devices)")
-    }
-
-    package func loadRequirePairing() throws -> Data? {
-        try read(Self.requirePairingAccount)
-    }
-
-    package func saveRequirePairing(_ record: Data) throws {
-        try write(record, account: Self.requirePairingAccount, label: "\(Self.label) (require pairing)")
     }
 
     // MARK: Generic passwords

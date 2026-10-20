@@ -2,22 +2,16 @@ import Foundation
 import Network
 import StreamProtocol
 
-/// The remote door (docs/remote-access-plan.md §4.7): a TLS 1.3 listener on a fixed port, for
-/// paired devices only, running while Remote Access is on or a pairing window it takes proofs for
-/// is open (one the Mac's user opened, never one a device opened by asking at home). Both sides
-/// present self-signed P-256 certificates and pin each other's key (RemoteTLS). No Bonjour.
+/// The remote door, the only door of this host: a TLS 1.3 listener on a fixed port, for paired
+/// devices only. Both sides present self-signed P-256 certificates and pin each other's key
+/// (RemoteTLS). No Bonjour.
 ///
-/// This type keeps the listener's life: the port (never another one by itself), the 30 s retry,
-/// and its log lines. Admission is `Door(.remote)`, the same code the home door runs once it
-/// speaks TLS (docs/home-pairing-plan.md §4.4), with DoorPolicy's remote rules: paired keys while
-/// Remote Access is on, 8 sessions at most, pairing only for a remote window, and an ask answered
-/// `closed`.
+/// This type keeps the listener's life: the port (never another one by itself), the retry, and its
+/// log lines. Admission is `Door`, with DoorPolicy's rules: paired keys while Remote Access is on,
+/// 8 sessions at most, and pairing only while a window that the Mac's user opened is open.
 ///
 /// Threading: everything here runs on StreamServer's network queue, which the listener, the
 /// connections, their verify blocks and the timers share. Callbacks out are on that queue.
-///
-/// TEST ONLY: StreamServer's SILL_TEST_LOOPBACK=1 puts this listener on 127.0.0.1 alone too, on a
-/// test host.
 final class RemoteServer {
     static let retryInterval: TimeInterval = 30
 
@@ -45,7 +39,7 @@ final class RemoteServer {
         self.server = server
         queue = server.queue
         self.trust = trust
-        door = Door(.remote, queue: server.queue, identity: identity, trust: trust, testHost: server.isTestHost)
+        door = Door(queue: server.queue, identity: identity, trust: trust, testHost: server.isTestHost)
         door.server = server
     }
 
@@ -88,16 +82,10 @@ final class RemoteServer {
         let l: NWListener
         do {
             if port == 0 {
-                if server.loopbackOnly { StreamServer.bindToLoopback(params, port: nil) }   // TEST ONLY
                 l = try NWListener(using: params)
             } else {
                 guard let p = NWEndpoint.Port(rawValue: UInt16(port)) else { failed(.posix(.EINVAL)); return }
-                if server.loopbackOnly {   // TEST ONLY: SILL_TEST_LOOPBACK (StreamServer)
-                    StreamServer.bindToLoopback(params, port: p)
-                    l = try NWListener(using: params)
-                } else {
-                    l = try NWListener(using: params, on: p)
-                }
+                l = try NWListener(using: params, on: p)
             }
         } catch {
             failed(error as? NWError ?? .posix(.EINVAL))
@@ -156,10 +144,9 @@ final class RemoteServer {
 
     /// Every admitted remote session whose route matches gets goodbye `reason` and is closed; `line`
     /// names one (from its paired name and endpoint) for the log, and `done` gets how many there
-    /// were. Home sessions are never touched here (Remote Access and its internet switch are about
-    /// who reaches the Mac from away). Thread-safe.
+    /// were. Thread-safe.
     func closeSessions(_ reason: String, matching: @escaping @Sendable (ClientRoute) -> Bool,
                        line: (@Sendable (String, String) -> String)? = nil, done: (@Sendable (Int) -> Void)? = nil) {
-        server.closeSessions(reason, matching: { $0.isRemote && matching($0) }, line: line, done: done)
+        server.closeSessions(reason, matching: matching, line: line, done: done)
     }
 }

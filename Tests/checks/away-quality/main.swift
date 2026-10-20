@@ -90,8 +90,7 @@ do {
     eq(off.changes(to: standard), "share clipboard off → on", "changes: and back")
     check(!off.validated().shareClipboard && standard.validated().shareClipboard, "validated keeps it either way")
     let made = HostConfig(maxFPS: 60, captureScale: 1, bitrate: 8_000_000, awayBitrate: 4_000_000, awayCaptureScale: 1, prioritizeSpeed: false,
-                          virtualDisplay: false, directWireless: false, remoteAccess: false, remotePort: 7455, internetAccess: false,
-                          requirePairing: true, shareClipboard: false)
+                          virtualDisplay: false, remoteAccess: false, remotePort: 7455, shareClipboard: false)
     check(!made.shareClipboard, "a HostConfig made with it off has it off (as Sill.app's settings make one)")
     let all = HostSettingsChange(token: 1, maxFPS: 60, bitrate: 25_000_000, captureScale: 1, prioritizeSpeed: true, virtualDisplay: true,
                                  directWireless: true)
@@ -104,7 +103,7 @@ do {
 
 do {
     var c = standard
-    c.bitrate = 40_000_000; c.captureScale = 2; c.maxFPS = 60; c.prioritizeSpeed = true; c.directWireless = true
+    c.bitrate = 40_000_000; c.captureScale = 2; c.maxFPS = 60; c.prioritizeSpeed = true
     let away = c.streamSettings(away: true)
     eq(away.bitrate, 4_000_000, "a device away sees the away bitrate")
     eq(away.captureScale, 1, "…and the away scale")
@@ -112,8 +111,8 @@ do {
     eq(home.bitrate, 40_000_000, "a device at home sees the home bitrate")
     eq(home.captureScale, 2, "…and the home scale")
     for (s, route) in [(away, "away"), (home, "home")] {
-        check(s.maxFPS == 60 && s.prioritizeSpeed && !s.virtualDisplay && s.directWireless == true,
-              "\(route): the other four are shared")
+        check(s.maxFPS == 60 && s.prioritizeSpeed && !s.virtualDisplay && s.directWireless == nil,
+              "\(route): the other three are shared, and no Direct Wireless")
     }
 }
 
@@ -146,15 +145,15 @@ do {
           "applyingAway of Standard from Retina away keeps the home Retina")
     let empty = c.applyingAway(HostSettingsChange(token: 9))
     check(empty == c, "applyingAway of nothing changes nothing")
-    let dw = c.applyingAway(HostSettingsChange(directWireless: true))
-    check(dw.directWireless && dw.awayBitrate == 4_000_000, "applyingAway lays a shared field as applying does")
+    let pf = c.applyingAway(HostSettingsChange(prioritizeSpeed: true))
+    check(pf.prioritizeSpeed && pf.awayBitrate == 4_000_000, "applyingAway lays a shared field as applying does")
 }
 
 do {
     // The whitelist is the same whichever pair the change lands on.
     let change = HostSettingsChange(bitrate: 12_000_000, captureScale: 1.5, directWireless: true)
     let (ok, refused) = DeviceSettings.accepted(change, virtualDisplayAvailable: true, fromRemote: true)
-    check(ok.bitrate == nil && ok.captureScale == nil && ok.directWireless == nil, "accepted: a hand-set bitrate, 1.5 and Direct Wireless from afar are refused")
+    check(ok.bitrate == nil && ok.captureScale == nil && ok.directWireless == nil, "accepted: a hand-set bitrate, 1.5 and Direct Wireless are refused")
     eq(refused.count, 3, "accepted: three refusals named")
     let (fine, none) = DeviceSettings.accepted(HostSettingsChange(bitrate: 150_000_000, captureScale: 1), virtualDisplayAvailable: false, fromRemote: true)
     check(fine.bitrate == 150_000_000 && fine.captureScale == 1 && none.isEmpty, "accepted: every preset and both scales from afar")

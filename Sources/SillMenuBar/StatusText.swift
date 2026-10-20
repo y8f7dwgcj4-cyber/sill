@@ -18,9 +18,6 @@ struct StatusPresentation: Equatable {
     struct Attention: Equatable, Identifiable {
         enum Action: Equatable {
             case allowScreenRecording, allowAccessibility, showRemoteAccess, showDevices
-            /// "‹device› Wants to Pair": its window forward while it shows the code (`showing`), else
-            /// a window opened on the Mac, asked by that device (its paired-style name).
-            case pairingRequest(name: String, showing: Bool)
             case none
         }
         var title: String
@@ -39,8 +36,6 @@ struct StatusPresentation: Equatable {
     var virtualDisplayNote: String
     var tooltip: String
     var accessibilityLabel: String
-    /// The name devices see this Mac as, once Bonjour has registered it.
-    var advertisedName: String?
     /// Under the menu's Remote Access… item: "Off", "On · Tailscale"… Nil on a host without
     /// remote access (no item then).
     var remoteAccessNote: String?
@@ -59,11 +54,7 @@ struct PermissionState: Equatable {
 
 /// The status copy. Title case in menus, sentence case in explanations, typographic quotes.
 enum StatusText {
-    /// How long the menu says an iPhone or iPad needs Sill updated after the home door refused one
-    /// of its plain connections (docs/home-pairing-plan.md §6.4).
-    static let olderDeviceShownFor: TimeInterval = 600
-
-    /// `now`: the clock the menu's items that last a while are judged by (fixed in the previews).
+    /// `now`: kept for the previews' fixed clock; no item lasts a while on this host.
     static func present(snapshot s: HostStatusSnapshot, permissions: PermissionState,
                         startupError: String?, hasCoordinator: Bool, now: Date = Date()) -> StatusPresentation {
         let (header, subtitle) = headline(s, permissions, startupError, hasCoordinator)
@@ -92,23 +83,16 @@ enum StatusText {
             attention.append(.init(title: "Remote Access Can’t Start", subtitle: "Port \(port) is in use by another app.",
                                    action: .showRemoteAccess))
         }
-        // Pairing at home (docs/home-pairing-plan.md §6.4).
-        let request = pairingRequest(s.remote, now: now)
-        if let request { attention.append(request) }
-        if let at = s.remote?.olderDeviceAt, now.timeIntervalSince(at) < olderDeviceShownFor {
-            attention.append(.init(title: "An iPhone or iPad Needs Sill Updated", subtitle: "It tried to connect with an older Sill.",
-                                   action: .none))
-        }
-        let homeDoorClosed = homeDoorUnavailable(s.remote)
-        if homeDoorClosed {
+        let doorClosed = s.remote?.identityProblem != nil
+        if doorClosed {
             attention.append(.init(title: "Devices Can’t Connect", subtitle: "Sill couldn’t use its key in your keychain.",
                                    action: .showDevices))
         }
 
-        // The attention glyph means "Sill needs you". The test pattern needs no permission. A device
-        // waiting to pair and a closed home door need the user too; an older device is only news.
+        // The attention glyph means "Sill needs you". The test pattern needs no permission. A
+        // closed door needs the user too.
         let glyph: StatusGlyph.State
-        if startupError != nil || isFailed(s.network) || remotePortTaken != nil || request != nil || homeDoorClosed
+        if startupError != nil || listenerFailed(s.remote) || remotePortTaken != nil || doorClosed
             || (!s.synthetic && !(permissions.screenRecording && permissions.accessibility)) {
             glyph = .attention
         } else if s.stream != nil {
@@ -119,39 +103,12 @@ enum StatusText {
             glyph = .idle
         }
 
-        var name: String?
-        if case .advertising(let n) = s.network { name = n }
-
         return StatusPresentation(glyph: glyph, header: header, subtitle: subtitle,
                                   source: sourceRow(s), devices: s.devices.map(deviceRow), attention: attention,
                                   virtualDisplayNote: virtualDisplayNote(s),
                                   tooltip: "Sill — \(header)", accessibilityLabel: "Sill, \(header)",
-                                  advertisedName: name, remoteAccessNote: remoteAccessNote(s.remote),
+                                  remoteAccessNote: remoteAccessNote(s.remote),
                                   canPair: s.remote.map { $0.identityProblem == nil } ?? false, away: s.away)
-    }
-
-    /// "iPad Wants to Pair", for 5 minutes after a device's ask (the host ends it sooner: when the
-    /// window showing its code closes, and when that device pairs): "A code is showing." while that
-    /// window is up, "Click to show a code." when the ask limits kept one from opening, the unlock
-    /// line when this Mac was locked. Sentences with a full stop, as every attention subtitle is.
-    /// Never for an ask from this Mac itself (the host sets none).
-    private static func pairingRequest(_ r: RemoteStatus?, now: Date) -> StatusPresentation.Attention? {
-        guard let request = r?.pairingRequest, now.timeIntervalSince(request.at) < RemoteStatus.PairingRequest.shownFor else { return nil }
-        let short = shortName(request.name)
-        let subtitle: String
-        switch request.reason {
-        case "showing": subtitle = "A code is showing."
-        case "locked": subtitle = "Unlock this Mac, then tap it on the \(short) again."
-        default: subtitle = "Click to show a code."
-        }
-        return .init(title: "\(short) Wants to Pair", subtitle: subtitle,
-                     action: .pairingRequest(name: request.name, showing: request.reason == "showing"))
-    }
-
-    /// The home door has no listener: the identity (its key, the trust list) could not be used.
-    private static func homeDoorUnavailable(_ r: RemoteStatus?) -> Bool {
-        if case .unavailable? = r?.homeDoor { return true }
-        return false
     }
 
     /// The remote door's port while Remote Access is on and another app holds that port.
@@ -160,9 +117,8 @@ enum StatusText {
         return port
     }
 
-    /// The Remote Access… item's subtitle: "Off", "On · Tailscale", "On · Tailscale and the
-    /// internet", "On · no VPN on this Mac", "Port 7455 is in use" or "Unavailable: the keychain
-    /// couldn’t be used".
+    /// The Remote Access… item's subtitle: "Off", "On · Tailscale", "On · no VPN on this Mac",
+    /// "Port 7455 is in use" or "Unavailable: the keychain couldn’t be used".
     static func remoteAccessNote(_ r: RemoteStatus?) -> String? {
         guard let r else { return nil }
         if r.identityProblem != nil { return "Unavailable: the keychain couldn’t be used" }
@@ -174,7 +130,6 @@ enum StatusText {
         }
         var ways: [String] = []
         for a in r.addresses where a.kind == MacAddress.vpn && !ways.contains(a.via) { ways.append(a.via) }
-        if r.internetAccess { ways.append("the internet") }
         guard let last = ways.last else { return "On · no VPN on this Mac" }
         return "On · " + (ways.count == 1 ? last : ways.dropLast().joined(separator: ", ") + " and " + last)
     }
@@ -184,23 +139,22 @@ enum StatusText {
                                  _ hasCoordinator: Bool) -> (String, String?) {
         if let startupError { return ("Sill Couldn’t Start", startupError) }
         if !hasCoordinator { return ("Starting…", nil) }
-        // No listener at all (fail closed): no device can find or reach this Mac.
-        if homeDoorUnavailable(s.remote) {
-            return ("Not Visible on the Network",
+        // No listener at all (fail closed): no device can reach this Mac.
+        guard let r = s.remote else { return ("Not Listening", "This host has no door for devices.") }
+        if r.identityProblem != nil {
+            return ("Not Listening",
                     "Sill couldn’t use its key in your keychain. Quit Sill and open it again, and choose Always Allow if the keychain asks.")
         }
-        switch s.network {
-        case .starting:
-            return ("Starting…", nil)
+        switch r.listener {
         case .failed(let error):
-            return ("Not Visible on the Network", "\(error). Quit and reopen Sill to try again.")
-        case .waiting:
-            return ("Waiting for the Network",
-                    "Sill appears on your iPhone and iPad once this Mac is on Wi-Fi or Ethernet and Local Network access is allowed.")
-        case .notAdvertised(let port):
-            return ("Test Pattern Mode", "Not advertised; test clients connect to port \(port).")
-        case .registering, .advertising:
-            break
+            return ("Not Listening", "\(error). Sill tries again every 30 seconds.")
+        case .portInUse(let port):
+            return ("Not Listening", "Port \(port) is in use by another app.")
+        case .off:
+            if !r.remoteAccess { return ("Remote Access Is Off", "Turn it on in Settings › Remote Access so paired devices can connect.") }
+            return ("Starting…", nil)
+        case .listening(let port):
+            if s.synthetic { return ("Test Pattern Mode", "Test clients connect to port \(port).") }
         }
         if !permissions.screenRecording {
             return ("Screen Recording Is Off", "Devices can connect but can’t see any windows.")
@@ -212,15 +166,13 @@ enum StatusText {
             let connected = count == 1 ? (s.devices[0].name.map(shortName) ?? "Device") : "\(count) Devices"
             return ("\(connected) Connected", "Pick a window on the device to start streaming.")
         }
-        if case .advertising(let name) = s.network {
-            return ("Waiting for a Device", "Open Sill on your iPhone or iPad. This Mac appears as “\(name)”.")
-        }
-        return ("Waiting for a Device", "Registering on the local network…")
+        return ("Waiting for a Device", "Open Sill on your iPhone or iPad and connect through Tailscale.")
     }
 
-    private static func isFailed(_ n: HostStatusSnapshot.Network) -> Bool {
-        if case .failed = n { return true }
-        return false
+    /// The door's listener failed, while Remote Access is on.
+    private static func listenerFailed(_ r: RemoteStatus?) -> Bool {
+        guard let r, r.remoteAccess, case .failed = r.listener else { return false }
+        return true
     }
 
     /// "iPad" from "iPad (iPad14,1)".
@@ -230,7 +182,7 @@ enum StatusText {
     }
 
     /// What streams: "Safari — Apple Developer" over "3024×1898 · 118 of 120 fps · 30 Mbps" (a still
-    /// picture: "120 fps, still"), and with one device, how it is connected: "… · 30 Mbps · Wi-Fi".
+    /// picture: "120 fps, still"), and with one device, how it is connected: "… · through Tailscale".
     /// With two or more, each device's own row says it.
     private static func sourceRow(_ s: HostStatusSnapshot) -> StatusPresentation.Row? {
         guard let stream = s.stream else { return nil }
@@ -258,8 +210,7 @@ enum StatusText {
         return StatusPresentation.Row(id: "source", symbol: symbol, title: title, detail: detail)
     }
 
-    /// "iPad (iPad14,1)" over "118 fps · frame age 9 ms · RTT 7 ms · Wi-Fi" (from away: "… · through
-    /// Tailscale"); the address until the device's first report (within a second; a remote device
+    /// "iPad (iPad14,1)" over "118 fps · frame age 9 ms · RTT 7 ms · through Tailscale"; the address until the device's first report (within a second; a remote device
     /// shows its paired name), and until then the route alone. A second without a sample reads
     /// "–", as in the host's log line and the device's HUD: a still window sends no frames
     /// (ScreenCaptureKit delivers only repaints), and a second can pass without a pong. While its
@@ -296,26 +247,10 @@ enum StatusText {
     }
 
     /// How a device reaches this Mac, the one place the card decides it (the device's row, and the
-    /// source row while it is the only device). A remote session says how it came ("through
-    /// Tailscale", "over the internet"; RemoteServer's label), which always wins: its link from
-    /// this Mac's side would read "Wi-Fi" for a session over the internet. A home device gets its
-    /// link from this Mac's side of its connection (ClientLink.route), in the words the device's
-    /// connect screen and Settings panel use; nil when neither says (loopback, an interface of no
-    /// known kind). Either is kept whole when a detail wraps: a remote label's spaces are no-break
-    /// ones (the source row wrapped "through" and "Tailscale" onto two lines), as Wi-Fi's hyphen is.
+    /// source row while it is the only device): the door's label ("through Tailscale", "by
+    /// address"). Its spaces are no-break ones, so a wrapped detail keeps it whole.
     private static func routeWord(_ d: HostStatusSnapshot.Device) -> String? {
-        if let remote = d.remoteRoute { return remote.replacingOccurrences(of: " ", with: "\u{00A0}") }
-        return d.route.map(word)
-    }
-
-    /// A home device's link as the card words it. "Wi-Fi" has a non-breaking hyphen, so a wrapped
-    /// detail never splits it.
-    private static func word(_ route: ClientLink.Route) -> String {
-        switch route {
-        case .wired: return "Wired"
-        case .wifi: return "Wi\u{2011}Fi"
-        case .direct: return "Direct"
-        }
+        d.remoteRoute.map { $0.replacingOccurrences(of: " ", with: "\u{00A0}") }
     }
 
     /// One of a device's reported times. Negative is the client's "no sample this second" (-1),

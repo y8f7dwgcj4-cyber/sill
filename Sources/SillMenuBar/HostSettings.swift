@@ -6,7 +6,7 @@ import SillHostCore
 /// UserDefaults (the bundle's domain, me.saffer.sill.mac; the bare SillMenuBar binary's is
 /// "SillMenuBar"). Main actor, like everything that shows or changes them.
 ///
-/// One path to the host: the menu, the Settings panes, the debug hooks and connected devices (through
+/// One path to the host: the menu, the Settings panes and connected devices (through
 /// the coordinator's `onDeviceSettingsChange`, which the model points here) all assign `config`.
 /// Its didSet saves what changed and calls `onChange`, which the model points at
 /// `StreamCoordinator.setTarget`, synchronously, so the host's target and `config` never disagree
@@ -18,11 +18,9 @@ import SillHostCore
 /// save writes only the keys a change touched. Launch at login is not stored here: SMAppService
 /// is its source of truth (LoginItem.swift).
 ///
-/// Remote Access, its port and the internet switch are the Mac's alone: they come from here (the
-/// menu, the Remote Access pane, -SillSetAfter), never from a device. The trust list, the keys and
-/// Require pairing never live here: any process of the same user can write these defaults
-/// (KeychainIdentityStore; docs/home-pairing-plan.md §6.5). `config.requirePairing` only carries
-/// the stored value to the host (AppModel.setRequirePairing), and `save(changedFrom:)` never writes it.
+/// Remote Access and its port are the Mac's alone: they come from here (the menu, the Remote Access
+/// pane), never from a device. The trust list and the keys never live here: any process of the same
+/// user can write these defaults (KeychainIdentityStore).
 ///
 /// Away from home (docs/remote-bundle-plan.md §5): the away quality is saved under its own keys,
 /// `awayBitrate` and `awayCaptureScale`, never over `bitrate` and `captureScale`; a device away sets
@@ -33,9 +31,9 @@ final class HostSettings {
     enum Key {
         static let maxFPS = "maxFPS", captureScale = "captureScale", bitrate = "bitrate"
         static let awayBitrate = "awayBitrate", awayCaptureScale = "awayCaptureScale"
-        static let prioritizeSpeed = "prioritizeSpeed", virtualDisplay = "virtualDisplay", directWireless = "directWireless"
-        static let remoteAccess = "remoteAccess", remotePort = "remotePort", internetAccess = "internetAccess"
-        static let remoteAddressName = "remoteAddressName", remoteDevicesSeen = "remoteDevicesSeen"
+        static let prioritizeSpeed = "prioritizeSpeed", virtualDisplay = "virtualDisplay"
+        static let remoteAccess = "remoteAccess", remotePort = "remotePort"
+        static let remoteDevicesSeen = "remoteDevicesSeen"
         static let settingsTab = "settingsTab", permissionsOnboardingDismissed = "permissionsOnboardingDismissed"
         static let askedScreenRecording = "askedScreenRecording", askedAccessibility = "askedAccessibility"
         static let logShowsStats = "logShowsStats"
@@ -62,18 +60,6 @@ final class HostSettings {
     var askedAccessibility: Bool { didSet { defaults.set(askedAccessibility, forKey: Key.askedAccessibility) } }
     /// The Log window shows the once-a-second stats and client lines.
     var logShowsStats: Bool { didSet { defaults.set(logShowsStats, forKey: Key.logShowsStats) } }
-    /// The router's dynamic DNS name for the internet switch ("home.example.net", or with ":port"
-    /// when the router forwards another outside port); "" for none. Not in HostConfig: it changes
-    /// no listener, only the addresses devices learn (`RemoteAccess.setAddressName`).
-    var remoteAddressName: String {
-        didSet {
-            guard remoteAddressName != oldValue else { return }
-            defaults.set(remoteAddressName, forKey: Key.remoteAddressName)
-            onAddressNameChange?()
-        }
-    }
-    @ObservationIgnored var onAddressNameChange: (@MainActor () -> Void)?
-
     @ObservationIgnored private let defaults: UserDefaults
 
     init(defaults: UserDefaults = .standard) {
@@ -87,13 +73,9 @@ final class HostSettings {
             Key.awayCaptureScale: Double(standard.awayCaptureScale),
             Key.prioritizeSpeed: standard.prioritizeSpeed,
             Key.virtualDisplay: standard.virtualDisplay,
-            // Off, like the CLI: an existing install has no key, so it stops asking for AWDL.
-            Key.directWireless: standard.directWireless,
-            // Off, and the internet switch too: only the Mac's own user widens exposure.
+            // Off: only the Mac's own user widens exposure.
             Key.remoteAccess: standard.remoteAccess,
             Key.remotePort: standard.remotePort,
-            Key.internetAccess: standard.internetAccess,
-            Key.remoteAddressName: "",
             // On, like the CLI: each device has its own switch, and a password manager's copies never go.
             Key.shareClipboard: standard.shareClipboard,
         ])
@@ -104,16 +86,9 @@ final class HostSettings {
                             awayCaptureScale: CGFloat(defaults.double(forKey: Key.awayCaptureScale)),
                             prioritizeSpeed: defaults.bool(forKey: Key.prioritizeSpeed),
                             virtualDisplay: defaults.bool(forKey: Key.virtualDisplay),
-                            directWireless: defaults.bool(forKey: Key.directWireless),
                             remoteAccess: defaults.bool(forKey: Key.remoteAccess),
                             remotePort: defaults.integer(forKey: Key.remotePort),
-                            internetAccess: defaults.bool(forKey: Key.internetAccess),
-                            // Never a default or a launch argument: it lives with the trust list
-                            // (the identity store), from which AppModel reads it at launch, before
-                            // the host starts, and to which the Devices pane saves it.
-                            requirePairing: HostConfig.standard.requirePairing,
                             shareClipboard: defaults.bool(forKey: Key.shareClipboard)).validated()
-        remoteAddressName = defaults.string(forKey: Key.remoteAddressName) ?? ""
         settingsTab = defaults.string(forKey: Key.settingsTab).flatMap(SettingsTab.init(rawValue:)) ?? .general
         permissionsOnboardingDismissed = defaults.bool(forKey: Key.permissionsOnboardingDismissed)
         askedScreenRecording = defaults.bool(forKey: Key.askedScreenRecording)
@@ -131,10 +106,8 @@ final class HostSettings {
         if config.awayCaptureScale != old.awayCaptureScale { defaults.set(Double(config.awayCaptureScale), forKey: Key.awayCaptureScale) }
         if config.prioritizeSpeed != old.prioritizeSpeed { defaults.set(config.prioritizeSpeed, forKey: Key.prioritizeSpeed) }
         if config.virtualDisplay != old.virtualDisplay { defaults.set(config.virtualDisplay, forKey: Key.virtualDisplay) }
-        if config.directWireless != old.directWireless { defaults.set(config.directWireless, forKey: Key.directWireless) }
         if config.remoteAccess != old.remoteAccess { defaults.set(config.remoteAccess, forKey: Key.remoteAccess) }
         if config.remotePort != old.remotePort { defaults.set(config.remotePort, forKey: Key.remotePort) }
-        if config.internetAccess != old.internetAccess { defaults.set(config.internetAccess, forKey: Key.internetAccess) }
         if config.shareClipboard != old.shareClipboard { defaults.set(config.shareClipboard, forKey: Key.shareClipboard) }
     }
 

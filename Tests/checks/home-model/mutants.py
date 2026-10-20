@@ -12,8 +12,6 @@ M = [
     ("the card's stopped words say a tap is enough (as before the review)", F,
      "            \"\\(mac) stopped pairing after too many wrong codes. On the Mac, choose Pair iPhone or iPad\\u{2026} in the Sill menu, then tap \\(mac) again.\"",
      "            \"\\(mac) stopped pairing after too many wrong codes. Tap \\(mac) for a new code.\""),
-    ("an expired window quiets again", W, "case .cancelled, .stopped: return true\n        case .used, .expired, .withdrawn, .none: return false",
-     "case .cancelled, .stopped, .expired: return true\n        case .used, .withdrawn, .none: return false"),
     ("homeRefusal: expired read as closed", F, "        case \"expired\"?: return .expired\n", ""),
     ("homeEnd: removed misspelt", F, "        if goodbye == \"removed\" { return .removed }", "        if goodbye == \"remove\" { return .removed }"),
     ("homeEnd: pairingRequired misspelt", F, "        if goodbye == \"pairingRequired\" { return .pairingRequired }", "        if goodbye == \"pairingrequired\" { return .pairingRequired }"),

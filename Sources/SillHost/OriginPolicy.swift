@@ -1,12 +1,11 @@
 import Foundation
 
 /// Where a connection comes from, told from its addresses and the interface it arrived on, and
-/// which door admits it (docs/remote-access-plan.md §4.4). The home door (plain TCP, Bonjour)
-/// serves only loopback, link-local (AWDL included) and this Mac's own networks; the remote door
-/// (TLS, paired devices) also serves VPNs, and internet sources only with the Mac's internet switch.
+/// whether the door admits it. The door (TLS, paired devices) serves loopback, this Mac's own
+/// networks and VPNs, and never the internet or peer-to-peer Wi-Fi.
 ///
-/// Defence in depth, not the boundary: a router that source-NATs or hairpins a port forward makes
-/// an internet peer look like `lan`. Pairing is the boundary.
+/// Defence in depth, not the boundary: a router that source-NATs a port forward makes an internet
+/// peer look like `lan`. Pairing is the boundary.
 ///
 /// Pure (Foundation and inet_pton only), so it is checked on its own with swiftc. The live
 /// interface table comes from `InterfaceSnapshot`.
@@ -87,18 +86,12 @@ enum OriginPolicy {
         return localAddress.flatMap(IPBytes.parse).flatMap { interfaces.owner[$0] }
     }
 
-    /// The home door: loopback, direct (AWDL: Direct Wireless) and this Mac's own networks.
-    static func homeAdmits(_ o: Origin) -> Bool {
-        o == .loopback || o == .direct || o == .lan
-    }
-
-    /// The remote door: loopback, this Mac's networks and VPNs; the internet only with the Mac's
-    /// switch; never peer-to-peer (Direct Wireless is the home door's).
-    static func remoteAdmits(_ o: Origin, internetAccess: Bool) -> Bool {
+    /// The door: loopback, this Mac's networks and VPNs. Never the internet, and never
+    /// peer-to-peer Wi-Fi.
+    static func remoteAdmits(_ o: Origin) -> Bool {
         switch o {
         case .loopback, .lan, .vpn: return true
-        case .internet: return internetAccess
-        case .direct: return false
+        case .internet, .direct: return false
         }
     }
 
@@ -118,8 +111,7 @@ enum OriginPolicy {
 
     /// The interface a link-local endpoint is scoped to, from its description: "awdl0" from
     /// "fe80::1%awdl0.52397" (Network prints the port after a dot) or "[fe80::1%awdl0]:52397". Nil
-    /// without a scope (IPv4, a global IPv6 address) and for a numeric one ("%16"). The same rule as
-    /// ClientLink.scope, kept here so that this file is checked on its own.
+    /// without a scope (IPv4, a global IPv6 address) and for a numeric one ("%16").
     static func scope(ofEndpoint description: String) -> String? {
         guard let percent = description.firstIndex(of: "%") else { return nil }
         let name = description[description.index(after: percent)...].prefix { $0.isASCII && ($0.isLetter || $0.isNumber) }

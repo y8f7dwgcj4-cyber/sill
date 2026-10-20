@@ -12,10 +12,7 @@ final class AppModel {
     let settings: HostSettings
     let permissions: PermissionsModel
     let loginItem = LoginItemModel()
-    /// The update check (GitHub's releases feed): the menu's "Sill 0.4 Is Available…" and Settings ›
-    /// General's section. Started once the host has started, or could not.
-    /// `--synthetic`: the Desktop streams a test pattern and the host stays off Bonjour, exactly
-    /// as with the CLI's flag. No onboarding in this mode.
+    /// `--synthetic`: the Desktop streams a test pattern, exactly as with the CLI's flag. No onboarding in this mode.
     let synthetic = CommandLine.arguments.contains("--synthetic")
     private(set) var coordinator: StreamCoordinator?
     /// The coordinator could not be created (the listener refused its parameters). Shown in the
@@ -26,15 +23,6 @@ final class AppModel {
     /// The Settings tab on screen, nil while Settings is closed: the panes that poll run only
     /// while theirs is visible.
     var visibleSettingsTab: SettingsTab?
-    /// The last Require pairing change the identity store did not keep, for the Devices pane.
-    private(set) var requirePairingProblem: RequirePairingProblem?
-
-    /// A Require pairing change that was not saved: what was asked, and why not.
-    struct RequirePairingProblem: Equatable {
-        var wanted: Bool
-        var reason: String
-    }
-
     /// Sill.app itself, not the bare SillMenuBar binary: an app bundle's executable, which runs with
     /// Sill's Screen Recording and Accessibility grants. It honours no TEST ONLY variable or `-Sill…After`
     /// hook that bears on who gets in or what pairing needs (docs/home-pairing-plan.md §4.3, §6.6):
@@ -51,18 +39,12 @@ final class AppModel {
     @ObservationIgnored var bringPairingForward: (() -> Bool)?
     /// Closes the pairing window as its Cancel does; false when it was not on screen.
     @ObservationIgnored var closePairingWindow: (() -> Bool)?
-    /// The notice for a device that paired by itself over the USB cable (its paired name and key).
-    @ObservationIgnored var showCableNotice: ((CableNotice) -> Void)?
     /// TEST ONLY (-SillSettingsAfter): the Settings window's controller, once it has been made.
     @ObservationIgnored var settingsWindowForTests: (() -> SettingsWindowController?)?
 
     @ObservationIgnored private var loggedStatus: String?
     @ObservationIgnored private var napActivity: NSObjectProtocol?
     @ObservationIgnored private var napHold = NapHold.none
-    /// Recomputes the presentation when a menu item that lasts a while runs out with nothing else
-    /// changing then (the older-device item's 10 minutes).
-    @ObservationIgnored private var presentationExpiry: Task<Void, Never>?
-    @ObservationIgnored private var presentationExpiryAt: Date?
 
     init() {
         let settings = HostSettings()
@@ -80,23 +62,16 @@ final class AppModel {
     /// running, asking for no permission at launch. Never exits on an error.
     func start() {
         observePresentation()
-        // The lock notifications: the ask rule's second witness that this Mac is locked
-        // (SessionLock), beside the session dictionary the CLI has alone.
-        SessionLock.shared.watchNotifications()
         Task { @MainActor in
             do {
-                // The identity before the coordinator: its TXT record (the tag, and `p` for Require
-                // pairing) goes into the first Bonjour registration, and the home door speaks TLS
-                // with it. A keychain failure leaves the home door closed and remote access
-                // unavailable, not the app (docs/home-pairing-plan.md §6.1).
+                // The identity before the coordinator: the door speaks TLS with it. A keychain
+                // failure leaves remote access unavailable, not the app.
                 let remote = makeRemoteAccess()
-                settings.config.requirePairing = launchRequirePairing(remote)
                 // The window lists carry this Sill's version, when it has one (the bare binary's
                 // "dev" does not parse): later devices can tell which Mac to update.
                 let c = try StreamCoordinator(config: settings.config, synthetic: synthetic, appKitLoop: true, remote: remote,
-                                              homePairing: true, testHooks: !Self.bundled,
+                                              testHooks: !Self.bundled,
                                               hostVersion: SillVersion(Self.version) != nil ? Self.version : nil)
-                c.keepRunningOnListenerFailure()
                 coordinator = c
                 // One path from the controls to the host, synchronous: the host's target equals
                 // settings.config at every main-actor turn, so a device's change and a menu click
@@ -112,9 +87,6 @@ final class AppModel {
                     settings.config = away ? settings.config.applyingAway(change) : settings.config.applying(change)
                     return settings.config
                 }
-                // Not in HostConfig (it moves no listener): handed over on its own.
-                remote.setAddressName(settings.remoteAddressName)
-                settings.onAddressNameChange = { [settings, weak remote] in remote?.setAddressName(settings.remoteAddressName) }
                 await c.start(preselect: nil, promptForPermissions: false)
                 Stats.shared.startPrinting()
                 print("Sill \(Self.version) (\(Self.build)) running from \(Bundle.main.bundlePath); log file \(HostLog.shared.fileURL?.path ?? "none")")
@@ -128,7 +100,7 @@ final class AppModel {
 
     // MARK: Pairing and remote access
 
-    /// The Mac's identity and trust list, and Require pairing beside them: a keychain in Sill.app,
+    /// The Mac's identity and trust list: a keychain in Sill.app,
     /// picked by IdentityStorePlan (docs/keychain-plan.md). An entitled Developer ID build (a
     /// provisioning profile embedded, so it holds a `keychain-access-groups` entitlement) uses the
     /// data-protection keychain, which no other process can pre-create or read; any other real
@@ -148,8 +120,6 @@ final class AppModel {
             self?.settings.rememberRemoteDevice(prefix, at: at, route: route, keep: keep)
         }
         remote.onPairingOffer = { [weak self] offer in self?.pairingOffered(offer) }
-        // A device paired by itself over the USB cable: the notice, once per pairing.
-        remote.onCablePaired = { [weak self] name, fingerprint in self?.showCableNotice?(CableNotice(name: name, fingerprint: fingerprint)) }
         return remote
     }
 
@@ -198,61 +168,15 @@ final class AppModel {
         return nil
     }
 
-    /// Require pairing at launch, from the identity store beside the trust list: on when it was
-    /// never saved (an existing install comes up on), and never from UserDefaults, where any process
-    /// of this user could turn it off (docs/home-pairing-plan.md §6.5). The bare binary also takes
-    /// `-requirePairing YES|NO` and saves it in its own store (memory, or the test directory);
-    /// Sill.app ignores the argument with a line.
-    private func launchRequirePairing(_ remote: RemoteAccess) -> Bool {
-        let stored = remote.storedRequirePairing()
-        let defaults = UserDefaults.standard
-        guard defaults.object(forKey: "requirePairing") != nil else { return stored }
-        if Self.bundled {
-            print("requirePairing ignored: Sill.app keeps Require pairing with its paired devices, never in its defaults or arguments; change it in Settings › Devices.")
-            return stored
-        }
-        let wanted = defaults.bool(forKey: "requirePairing")
-        // Off only once saved; on in any case (the safe side).
-        if remote.saveRequirePairing(wanted) != nil, !wanted { return stored }
-        return wanted
-    }
-
-    /// Settings › Devices' Require pairing (and the bare binary's -SillSetAfter): saved with the
-    /// trust list first, then applied through `settings.config`, the one path to the host (the TXT
-    /// record's `p`, and a goodbye to every unpaired device when it turns on). Turning it off takes
-    /// effect only once saved: a save that fails leaves it on, with the keychain line in the pane.
-    /// Turning it on always takes effect, for this run at least.
-    func setRequirePairing(_ on: Bool) {
-        guard on != settings.config.requirePairing else { requirePairingProblem = nil; return }
-        guard let remote else { return }
-        if let problem = remote.saveRequirePairing(on) {
-            requirePairingProblem = RequirePairingProblem(wanted: on, reason: problem)
-            guard on else { return }
-        } else {
-            requirePairingProblem = nil
-        }
-        settings.config.requirePairing = on
-    }
-
     /// The host's remote access, once the coordinator is up.
     var remote: RemoteAccess? { coordinator?.remote }
 
-    /// Pair iPhone or iPad… (the menu, the panes, -SillPairAfter): opens a pairing window, or
-    /// brings the open one forward with its code (one a device opened becomes the remote door's too).
+    /// Pair iPhone or iPad… (the menu, the panes): opens a pairing window, or brings the open one
+    /// forward with its code.
     func pairDevice() {
-        // A window up already comes forward at once; the offer made again (with addresses, when a
-        // device opened it) follows once the remote door's port and addresses are known.
+        // A window up already comes forward at once; the offer made again follows.
         _ = bringPairingForward?()
         remote?.openPairing(requestedBy: nil)
-    }
-
-    /// The menu's "‹device› Wants to Pair": its window forward while it shows the code ("A code is
-    /// showing."), else a window opened on the Mac, asked by that device ("Click to show a code.",
-    /// or after the Mac was unlocked), which the request then follows (RemoteAccess: it ends when
-    /// that window closes, or when the device pairs).
-    func showPairingRequest(name: String, showing: Bool) {
-        if showing, bringPairingForward?() == true { return }
-        remote?.openPairing(requestedBy: name)
     }
 
     /// The pairing window was closed, or its Cancel clicked: the code dies with it.
@@ -260,7 +184,7 @@ final class AppModel {
         remote?.cancelPairing()
     }
 
-    /// Remove in the pane (and -SillUnpairAfter). Nil when done; otherwise why the device is still
+    /// Remove in the pane. Nil when done; otherwise why the device is still
     /// paired (the keychain could not be written), and its "last connected" stays too.
     @discardableResult
     func removeDevice(_ id: String) -> String? {
@@ -316,25 +240,6 @@ final class AppModel {
                            startupError: startupError, hasCoordinator: coordinator != nil, now: Date())
     }
 
-    /// The older-device item ends 10 minutes after the connection it tells of, when nothing else
-    /// need change: work the presentation out again then. (The "Wants to Pair" item's 5 minutes end
-    /// in the host, which publishes.)
-    private func scheduleExpiry() {
-        let end = coordinator?.status.snapshot.remote?.olderDeviceAt?.addingTimeInterval(StatusText.olderDeviceShownFor)
-        guard end != presentationExpiryAt else { return }       // the once-a-second stats change nothing here
-        presentationExpiryAt = end
-        presentationExpiry?.cancel()
-        presentationExpiry = nil
-        guard let end else { return }
-        let left = end.timeIntervalSinceNow
-        guard left > 0 else { return }
-        presentationExpiry = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .seconds(left + 0.5))
-            guard !Task.isCancelled, let self else { return }
-            self.publish(self.currentPresentation())
-        }
-    }
-
     private func publish(_ next: StatusPresentation) {
         if next != presentation || loggedStatus == nil {
             presentation = next
@@ -348,7 +253,6 @@ final class AppModel {
         }
         let snapshot = coordinator?.status.snapshot
         holdAppNapOff(devices: snapshot?.devices.count ?? 0, remote: snapshot?.remoteDeviceCount ?? 0)
-        scheduleExpiry()
     }
 
     private enum NapHold { case none, connected, remote }

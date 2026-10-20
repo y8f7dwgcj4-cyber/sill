@@ -107,7 +107,7 @@ while IFS= read -r line; do
 done < <(search '[A-Za-z0-9-]+\.[A-Za-z0-9-]+\.ts\.net')
 
 while IFS= read -r line; do
-    printf '%s' "$line" | grep -Eq '/Users/(you|me|name|USER|\$USER|<[a-z]+>|Shared)' || shape "a home folder path: $line"
+    printf '%s' "$line" | grep -Eq '/Users/(you|me|name|USER|\$USER|<[a-z]+>|Shared)([^A-Za-z0-9._-]|$)' || shape "a home folder path: $line"
 done < <(search '/Users/[A-Za-z0-9._-]+')
 
 # Apple team IDs: a 10-character ID beside a signing word. The placeholders are allowed.

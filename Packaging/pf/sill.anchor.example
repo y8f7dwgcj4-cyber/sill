@@ -1,0 +1,32 @@
+# Sill: an optional pf anchor, a second layer under Sill's own address bind.
+#
+# The rules let the Sill port in only on the Tailscale interface, and only from
+# Tailscale addresses. Every other interface drops it. Sill already listens on
+# the Tailscale address alone, so these rules are for defence in depth.
+#
+# Placeholders:
+#   SILL_PORT      the port in tailscale.conf, else 7455
+#   TAILSCALE_IF   the interface that holds your Tailscale address (utun4, for example)
+#
+# Find TAILSCALE_IF:  ifconfig | grep -B4 'inet 100\.'   (the utunN line above it)
+# The utunN number can change after a restart or a Tailscale update. When it changes,
+# edit TAILSCALE_IF and load the anchor again, or Sill's port is blocked everywhere.
+#
+# To use it:
+#   1. Copy this file to /etc/pf.anchors/sill and replace the two placeholders.
+#   2. Add these two lines to the end of /etc/pf.conf:
+#        anchor "sill"
+#        load anchor "sill" from "/etc/pf.anchors/sill"
+#   3. Check the rules:   sudo pfctl -vnf /etc/pf.conf
+#   4. Load them:         sudo pfctl -f /etc/pf.conf
+#   5. Turn pf on:        sudo pfctl -E
+#   6. Show them:         sudo pfctl -a sill -sr
+#
+# A macOS update can replace /etc/pf.conf. After an update, look at it again.
+
+sill_port = "SILL_PORT"
+tailscale_if = "TAILSCALE_IF"
+
+pass in quick on $tailscale_if proto tcp from 100.64.0.0/10 to any port $sill_port
+pass in quick on $tailscale_if proto tcp from fd7a:115c:a1e0::/48 to any port $sill_port
+block drop in quick proto tcp from any to any port $sill_port

@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import Network
 import Security
@@ -63,6 +64,8 @@ package final class RemoteAccess {
     /// always reach it (decision D5). The display can still sleep, and a closed laptop lid still
     /// puts the Mac to sleep.
     private var sleepActivity: NSObjectProtocol?
+    /// The wake observer: after a sleep the door reads the file again and checks its address.
+    private var wakeObserver: NSObjectProtocol?
 
     private weak var server: StreamServer?
     private weak var status: HostStatus?
@@ -148,8 +151,27 @@ package final class RemoteAccess {
             }
         }
         self.door = door
+        // After a wake, Tailscale can take some seconds to bring its address back. Reachability
+        // sees most changes; this makes sure that the door looks at once, then again in 5 s.
+        wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification,
+                                                                         object: nil, queue: nil) { [weak self] _ in
+            // A hop, never assumeIsolated: under the CLI's dispatchMain the main queue drains on a
+            // worker thread.
+            Task { @MainActor in self?.woke() }
+        }
         publishTrust()
         publish()
+    }
+
+    /// The Mac woke from sleep.
+    private func woke() {
+        print("Remote access: this Mac woke; checking the Tailscale address.")
+        updateDoor()
+        door?.retryNow()
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(5))
+            self?.door?.retryNow()
+        }
     }
 
     // MARK: Settings (the Mac's own)

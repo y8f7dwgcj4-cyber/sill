@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  A LaunchAgent template that keeps Sill.app running for one user on an always-on Mac.
+
+  1. Copy this file to ~/Library/LaunchAgents/local.sill.host.plist
+  2. Change the path in ProgramArguments if Sill.app is not in /Applications.
+  3. In Sill, turn off Settings > General > Launch at Login. Two copies of Sill
+     would try to bind the same address and port.
+  4. Load it:   launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/local.sill.host.plist
+     Stop it:   launchctl bootout gui/$(id -u)/local.sill.host
+     Status:    launchctl print gui/$(id -u)/local.sill.host
+
+  Quit Sill from its menu to stop it until the next login (a clean exit is not restarted).
+  A crash is restarted after ThrottleInterval seconds.
+
+  Sill writes its own log with a size limit: ~/Library/Logs/Sill/Sill.log, moved aside to
+  Sill.1.log at 10 MB. So standard output and standard error go to /dev/null here, and no
+  log file can grow without limit.
+-->
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>local.sill.host</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/Applications/Sill.app/Contents/MacOS/Sill</string>
+	</array>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>KeepAlive</key>
+	<dict>
+		<key>SuccessfulExit</key>
+		<false/>
+	</dict>
+	<key>ThrottleInterval</key>
+	<integer>30</integer>
+	<!-- Screen capture and input need the user's graphical session. -->
+	<key>LimitLoadToSessionType</key>
+	<string>Aqua</string>
+	<key>ProcessType</key>
+	<string>Interactive</string>
+	<key>StandardOutPath</key>
+	<string>/dev/null</string>
+	<key>StandardErrorPath</key>
+	<string>/dev/null</string>
+</dict>
+</plist>

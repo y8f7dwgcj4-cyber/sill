@@ -28,5 +28,9 @@ let package = Package(
         // is a symlink to the host's copy. Not shipped.
         .executableTarget(name: "CaptureProbe"),
         .executableTarget(name: "VirtualDisplayProbe"),
+        // Unit tests of the hardening's pure rules: the Tailscale address file, the bind, the
+        // origin rule and the door's admission. `swift test`, or `xcodebuild test -scheme
+        // Sill-Package -destination 'platform=macOS'` (docs/BUILD-AND-VERIFY.md).
+        .testTarget(name: "SillHostTests", dependencies: ["SillHostCore", "StreamProtocol"], path: "Tests/SillHostTests"),
     ]
 )

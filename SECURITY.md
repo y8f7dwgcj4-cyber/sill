@@ -19,6 +19,13 @@ The host has these layers, from the outside in:
 5. An unpaired key can only pair, and only while you have a pairing window open on the Mac.
 6. The optional pf anchor in `Packaging/pf/sill.anchor.example` drops the port on every other interface.
 
+### When you find a problem
+
+1. Remove each paired device in Sill's Settings, Devices.
+2. Turn off Remote Access, or quit Sill.
+3. Write down the log lines from `~/Library/Logs/Sill/Sill.log`.
+4. If the problem is also in upstream Sill, decide whether to tell the upstream developer. Do not put your own addresses or names in that report.
+
 ## Concepts
 
 **Paired device.** A paired device is an iPad or iPhone whose key is on the Mac's trust list. It can see and control the Mac while the door listens. Remove it in Sill's Settings, Devices, if you lose it.
@@ -40,13 +47,6 @@ The host has these layers, from the outside in:
 - Tailscale's own access controls decide who is in your tailnet. Use Tailscale ACLs to limit which devices can reach the Mac.
 - Without a provisioning profile, Sill keeps its key in the login keychain. Another app of your user can create that item before the first launch.
 - A paired device has full control of the Mac's screen, keyboard and mouse.
-
-## What to do when you find a problem
-
-1. Remove each paired device in Sill's Settings, Devices.
-2. Turn off Remote Access, or quit Sill.
-3. Write down the log lines from `~/Library/Logs/Sill/Sill.log`.
-4. If the problem is also in upstream Sill, decide whether to tell the upstream developer. Do not put your own addresses or names in that report.
 
 ## What changed recently
 

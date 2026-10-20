@@ -9,16 +9,13 @@ import StreamProtocol
 struct SettingsPane: View {
     let tab: SettingsTab
     let model: AppModel
-    /// The previews (DebugHooks): General's update section in this state instead of the live one,
-    /// so a render does not depend on what an earlier run stored.
-    var previewUpdates: UpdatePolicy.Pane?
-    /// …and its clipboard section with macOS's answer as given, never read from this Mac.
+    /// The previews: the clipboard section with macOS's answer as given, never read from this Mac.
     var previewClipboardAccess: ClipboardPolicy.MacAccess?
 
     var body: some View {
         Group {
             switch tab {
-            case .general: GeneralPane(model: model, settings: model.settings, previewUpdates: previewUpdates,
+            case .general: GeneralPane(model: model, settings: model.settings,
                                        previewClipboardAccess: previewClipboardAccess)
             case .devices: LiveDevicesPane(model: model, settings: model.settings)
             case .streaming: StreamingPane(model: model, settings: model.settings)
@@ -82,7 +79,6 @@ func withoutFullStop(_ text: String) -> String {
 private struct GeneralPane: View {
     let model: AppModel
     @Bindable var settings: HostSettings
-    var previewUpdates: UpdatePolicy.Pane?
     var previewClipboardAccess: ClipboardPolicy.MacAccess?
 
     private static let runsFromApplications = Bundle.main.bundlePath.hasPrefix("/Applications/")
@@ -147,13 +143,6 @@ private struct GeneralPane: View {
             ClipboardSection(shareClipboard: $settings.config.shareClipboard,
                              access: previewClipboardAccess ?? model.permissions.clipboardAccess,
                              allow: { model.permissions.allowClipboard() })
-            if let preview = previewUpdates {
-                UpdatesSection(pane: preview, automatic: .constant(true))
-            } else {
-                UpdatesSection(pane: model.updates.pane, automatic: $settings.updateCheck,
-                               actions: UpdatesSection.Actions(checkNow: { model.updates.checkNow() },
-                                                               openRelease: { NSWorkspace.shared.open($0) }))
-            }
             Section {
                 HStack {
                     Button("Show Log…") { model.showLog?() }
@@ -212,47 +201,6 @@ struct ClipboardSection: View {
             }
         } footer: {
             Footnote(ClipboardPolicy.Copy.macFootnote)
-        }
-    }
-}
-
-// MARK: Updates
-
-/// Settings › General's update check: the automatic switch, the line (what the last check found, or
-/// why Sill cannot check), Open Release Page… while a newer release is offered, and Check Now. Plain
-/// values in, so the previews draw every state. Errors show here and in the log, never in an alert.
-struct UpdatesSection: View {
-    struct Actions {
-        var checkNow: () -> Void = {}
-        var openRelease: (URL) -> Void = { _ in }
-    }
-
-    let pane: UpdatePolicy.Pane
-    @Binding var automatic: Bool
-    var actions = Actions()
-
-    var body: some View {
-        Section {
-            Toggle("Check for updates automatically", isOn: $automatic)
-            LabeledContent {
-                HStack(spacing: 8) {
-                    if let url = pane.releasePage {
-                        Button("Open Release Page…") { actions.openRelease(url) }
-                    }
-                    Button("Check Now") { actions.checkNow() }
-                        .disabled(!pane.canCheck)
-                }
-            } label: {
-                Text(pane.line)
-                    .foregroundStyle(pane.failed ? Color.orange : Color.primary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            // VoiceOver hears Check Now's result, which arrives after the click.
-            .onChange(of: pane.resultID) { _, _ in
-                AccessibilityNotification.Announcement(pane.line).post()
-            }
-        } footer: {
-            Footnote(UpdatePolicy.footnote)
         }
     }
 }

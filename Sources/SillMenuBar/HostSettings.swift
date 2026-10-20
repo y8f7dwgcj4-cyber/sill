@@ -28,10 +28,6 @@ import SillHostCore
 /// `awayBitrate` and `awayCaptureScale`, never over `bitrate` and `captureScale`; a device away sets
 /// it, and so does Settings › Streaming's "Away from home" section. Until the first change the keys do
 /// not exist (`defaults read … awayBitrate` says so), which is how Low · Standard reads.
-///
-/// `updateCheck` (automatic update checks) is here too, outside HostConfig: it moves no listener and
-/// no pipeline. What the checks found is UpdateChecker's own (updateLastCheck, updateETag,
-/// updateLatestTag, updateLatestURL, in the same defaults).
 @MainActor @Observable
 final class HostSettings {
     enum Key {
@@ -43,7 +39,6 @@ final class HostSettings {
         static let settingsTab = "settingsTab", permissionsOnboardingDismissed = "permissionsOnboardingDismissed"
         static let askedScreenRecording = "askedScreenRecording", askedAccessibility = "askedAccessibility"
         static let logShowsStats = "logShowsStats"
-        static let updateCheck = "updateCheck"
         static let shareClipboard = "shareClipboard"
     }
 
@@ -78,17 +73,6 @@ final class HostSettings {
         }
     }
     @ObservationIgnored var onAddressNameChange: (@MainActor () -> Void)?
-    /// "Check for updates automatically" (Settings › General): once a day, GitHub's releases feed
-    /// (UpdateChecker). On by default; `-updateCheck 0` turns it off for one run without saving.
-    var updateCheck: Bool {
-        didSet {
-            guard updateCheck != oldValue else { return }
-            defaults.set(updateCheck, forKey: Key.updateCheck)
-            print("Update check: automatic checks \(updateCheck ? "on" : "off").")
-            onUpdateCheckChange?()
-        }
-    }
-    @ObservationIgnored var onUpdateCheckChange: (@MainActor () -> Void)?
 
     @ObservationIgnored private let defaults: UserDefaults
 
@@ -110,7 +94,6 @@ final class HostSettings {
             Key.remotePort: standard.remotePort,
             Key.internetAccess: standard.internetAccess,
             Key.remoteAddressName: "",
-            Key.updateCheck: true,
             // On, like the CLI: each device has its own switch, and a password manager's copies never go.
             Key.shareClipboard: standard.shareClipboard,
         ])
@@ -131,7 +114,6 @@ final class HostSettings {
                             requirePairing: HostConfig.standard.requirePairing,
                             shareClipboard: defaults.bool(forKey: Key.shareClipboard)).validated()
         remoteAddressName = defaults.string(forKey: Key.remoteAddressName) ?? ""
-        updateCheck = defaults.bool(forKey: Key.updateCheck)
         settingsTab = defaults.string(forKey: Key.settingsTab).flatMap(SettingsTab.init(rawValue:)) ?? .general
         permissionsOnboardingDismissed = defaults.bool(forKey: Key.permissionsOnboardingDismissed)
         askedScreenRecording = defaults.bool(forKey: Key.askedScreenRecording)

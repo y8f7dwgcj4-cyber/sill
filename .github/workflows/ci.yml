@@ -17,12 +17,9 @@ name: CI
 # (Should this job ever become a required check, such a pull request would wait for it: drop
 # paths-ignore then.) The rest of design/ is not left out: Tests/checks/dmg-layout reads
 # design/DMGBackground.svg (the disk image's window).
+# Hardening fork: this workflow runs only when you start it by hand. A push or a pull request
+# starts nothing.
 on:
-  pull_request:
-    paths-ignore: ['**.md', 'docs/**', 'site/**', 'design/screenshots/**', 'LICENSE']
-  push:
-    branches: [main]
-    paths-ignore: ['**.md', 'docs/**', 'site/**', 'design/screenshots/**', 'LICENSE']
   workflow_dispatch:
     inputs:
       mutants:

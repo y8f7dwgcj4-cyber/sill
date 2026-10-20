@@ -4,11 +4,9 @@
 #   Scripts/make-app.sh                    .build/Sill.app, signed with your Apple Development identity
 #   SILL_UNIVERSAL=1 Scripts/make-app.sh   …for Apple silicon and Intel Macs (arm64 and x86_64; #62)
 #   Scripts/make-app.sh --install          …then replace /Applications/Sill.app (a running copy quits first)
-#   Scripts/make-app.sh --install --open   …and launch it: Noah's one command after any change
+#   Scripts/make-app.sh --install --open   …and launch it after any change
 #   SILL_SIGN_IDENTITY='Developer ID Application: … (TEAMID)' Scripts/make-app.sh --release
-#                                          (M6; refused unless HEAD carries the tag v‹version› and
-#                                          the signature is Developer ID; Scripts/release.sh --dry-run
-#                                          sets SILL_RELEASE_DRY_RUN=1, which only warns about the tag)
+#                                          (refused unless the signature is Developer ID)
 #   SILL_INSTALL_DIR=~/Applications Scripts/make-app.sh --install   (another install folder)
 #
 # Why a script: SwiftPM builds executables, not app bundles, and everything the host needs from
@@ -67,24 +65,6 @@ if [ "$release" = 1 ] && [ -z "${SILL_SIGN_IDENTITY:-}" ]; then
     echo "error: --release needs SILL_SIGN_IDENTITY='Developer ID Application: … (TEAMID)'" >&2
     exit 2
 fi
-# A release is built only from the commit its tag names: the tag is "v" + Packaging/Info.plist's
-# CFBundleShortVersionString (v0.4.0 for 0.4.0), and every Sill.app's update check compares the
-# latest release's tag on GitHub with the version it runs (Sources/SillMenuBar/UpdatePolicy.swift).
-# A rehearsal (release.sh --dry-run, which sets SILL_RELEASE_DRY_RUN=1) builds any commit and only
-# warns: its zip is never notarized, so it is never published.
-if [ "$release" = 1 ]; then
-    version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Packaging/Info.plist)"
-    tags="$(git tag --points-at HEAD 2>/dev/null | tr '\n' ' ' | sed 's/ $//' || true)"
-    if ! git tag --points-at HEAD 2>/dev/null | grep -Fx "v$version" >/dev/null; then   # -F: dots are dots
-        if [ "${SILL_RELEASE_DRY_RUN:-}" = 1 ]; then
-            echo "warning: HEAD is not tagged v$version (it is tagged '${tags:-nothing}'); a dry run builds it anyway, a release only a commit tagged v$version." >&2
-        else
-            echo "error: --release builds only a commit tagged v$version (HEAD is tagged '${tags:-nothing}'): the update check compares the release's tag with this version." >&2
-            exit 2
-        fi
-    fi
-fi
-
 bundle_id="${SILL_BUNDLE_ID:-$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' Packaging/Info.plist)}"
 
 # SILL_UNIVERSAL=1: one Sill.app for Apple silicon and Intel Macs (#62), one build per architecture
@@ -93,7 +73,7 @@ bundle_id="${SILL_BUNDLE_ID:-$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdenti
 # one shared .build, every switch of triple costs a relink (16 s measured), so no rebuild stays at
 # ~2 s. Off by default: it doubles every build (50 to 97 s cold, 21 to 42 s after a one-line change,
 # measured 2026-10-20), the x86_64 slice had not streamed on an Intel Mac by then, and releases stay
-# arm64 until #62 decides (release.sh names the architectures it built). Unset, the build is for this
+# arm64 until #62 decides. Unset, the build is for this
 # Mac's own architecture, as it always was.
 if [ "${SILL_UNIVERSAL:-}" = 1 ]; then
     bin=.build/universal

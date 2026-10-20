@@ -10,13 +10,12 @@
 # Cost: GitHub-hosted runners are free for a public repository. For a private one, macOS minutes
 # count against the account's included minutes and are then billed per minute ($0.062 on
 # 2026-09-25). The build job takes about 10 to 15 minutes; the mutants, about two hours of macOS
-# time in all. docs/release-checklist.md, "Releasing from GitHub Actions", has the details.
+# time in all.
 name: CI
 
 # A change that touches only documents, the website or the README's screenshots starts no run.
 # (Should this job ever become a required check, such a pull request would wait for it: drop
-# paths-ignore then.) The rest of design/ is not left out: Tests/checks/dmg-layout reads
-# design/DMGBackground.svg (the disk image's window).
+# paths-ignore then.)
 # Hardening fork: this workflow runs only when you start it by hand. A push or a pull request
 # starts nothing.
 on:
@@ -231,7 +230,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        check: [addresses, away-copy, away-quality, away-wire, clipboard, compatibility, device-gate, dmg-layout, duo, encoder-mailbox, encoder-slowstate, fence, gesture-chords, gestures, goodbye, hardware-keyboard, home-device, home-model, home-txt, installed-apps, key-strokes, keychain, link-judge, menu-state, menus, message-reader, origin, pairing-address, phone-portrait, pointer-control, pointer-presence, pointer-watch, policy, protocol, remote-rules, settings-window, tour, virtual-display-api, window-restore]
+        check: [addresses, away-copy, away-quality, away-wire, clipboard, compatibility, device-gate, duo, encoder-mailbox, encoder-slowstate, fence, gesture-chords, gestures, goodbye, hardware-keyboard, home-device, home-model, home-txt, installed-apps, key-strokes, keychain, link-judge, menu-state, menus, message-reader, origin, pairing-address, phone-portrait, pointer-control, pointer-presence, pointer-watch, policy, protocol, remote-rules, settings-window, tour, virtual-display-api, window-restore]
     steps:
       - name: Check out
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

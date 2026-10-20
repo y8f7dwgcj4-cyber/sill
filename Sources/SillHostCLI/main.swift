@@ -34,14 +34,15 @@ config.virtualDisplay = virtualDisplay
 // A --synthetic host shares a pasteboard of its own, never this Mac's clipboard.
 config.shareClipboard = !CommandLine.arguments.contains("--no-clipboard")
 
-// `SillHost --remote[=PORT]`: the door for this run (TLS 1.3, paired devices only), on PORT or
-// any free port, so it never collides with Sill.app's 7455. A new in-memory identity and trust
-// list every run. A pairing window is always open (a fresh one after each use or expiry); its code
-// and link are printed here, to this process's stdout only. TEST ONLY: SILL_TEST_REMOTE_DIR=<dir>
-// keeps the identity and pairings in a 0700 directory, on a --synthetic host only.
+// The door is always on (TLS 1.3, paired devices only), on the Tailscale address in
+// tailscale.conf and on the file's port, else 7455. `--remote=PORT` sets another port, and
+// `--remote` alone any free port. A new in-memory identity and trust list every run. A pairing
+// window is always open (a fresh one after each use or expiry); its code and link are printed
+// here, to this process's stdout only. TEST ONLY: SILL_TEST_REMOTE_DIR=<dir> keeps the identity
+// and pairings in a 0700 directory, on a --synthetic host only.
+config.remoteAccess = true
 let remoteFlag = CommandLine.arguments.first { $0 == "--remote" || $0.hasPrefix("--remote=") }
 if let remoteFlag {
-    config.remoteAccess = true
     if remoteFlag.hasPrefix("--remote=") {
         guard let p = Int(remoteFlag.dropFirst("--remote=".count)), (1024...65535).contains(p) else {
             print("--remote=PORT takes a port from 1024 to 65535.")
@@ -102,13 +103,12 @@ var coordinator: StreamCoordinator?
 func startHost() {
     Task { @MainActor in
         do {
-            let remote = config.remoteAccess ? makeRemoteAccess() : nil
+            let remote = makeRemoteAccess()
             let c = try StreamCoordinator(config: config, synthetic: synthetic, appKitLoop: virtualDisplay, remote: remote,
                                           testHooks: true)
             coordinator = c
             await c.start(preselect: preselect)
-            if remote == nil { print("No door for devices: run with --remote to let a paired device connect.") }
-            remote?.openPairing(requestedBy: nil)
+            remote.openPairing(requestedBy: nil)
             if synthetic { print("Synthetic mode: pick Desktop on the device (or from a test client) to stream a test pattern.") }
             if virtualDisplay { print("Virtual display mode: a picked window streams from its own HiDPI display; Ctrl-C puts it back.") }
             print("\(c.windowCount) windows on screen.")

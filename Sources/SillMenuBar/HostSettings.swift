@@ -73,7 +73,7 @@ final class HostSettings {
             Key.awayCaptureScale: Double(standard.awayCaptureScale),
             Key.prioritizeSpeed: standard.prioritizeSpeed,
             Key.virtualDisplay: standard.virtualDisplay,
-            // Off: only the Mac's own user widens exposure.
+            // On: the door is the only way in, and it listens only on the Tailscale address.
             Key.remoteAccess: standard.remoteAccess,
             Key.remotePort: standard.remotePort,
             // On, like the CLI: each device has its own switch, and a password manager's copies never go.

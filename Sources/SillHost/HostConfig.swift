@@ -55,14 +55,15 @@ package struct HostConfig: Equatable, Sendable {
     }
 
     /// The spike's knobs, formerly the `let`s at the top of the CLI's main.swift, and the app's
-    /// defaults. Virtual display off in both. Remote access off in both: only the Mac's own user
-    /// widens exposure. 7455 is unassigned at IANA and below the ephemeral range. Away from home,
+    /// defaults. Virtual display off in both. Remote access on: the door is the only way in, and it
+    /// listens only on the Tailscale address in tailscale.conf (it fails closed without the file).
+    /// 7455 is unassigned at IANA and below the ephemeral range. Away from home,
     /// Low · Standard: a slow connection never starts at the home quality. Share clipboard with
     /// devices on: each device has its own switch too, and a password manager's copies never go.
     package static let standard = HostConfig(maxFPS: 120, captureScale: 2, bitrate: 15_000_000,
                                              awayBitrate: 4_000_000, awayCaptureScale: 1,
                                              prioritizeSpeed: false, virtualDisplay: false,
-                                             remoteAccess: false, remotePort: 7455, shareClipboard: true)
+                                             remoteAccess: true, remotePort: 7455, shareClipboard: true)
 
     /// The remote door's port when none is set.
     package static let defaultRemotePort = 7455

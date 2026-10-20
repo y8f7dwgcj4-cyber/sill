@@ -514,7 +514,7 @@ No commit changes `Sources/StreamProtocol/` or `iOSClient/`. The door keeps TLS 
 
 ## 11. What I could not verify
 
-- Any build. The cloud session cannot compile Apple frameworks. I checked the syntax of every changed Swift file with a tree-sitter parser, and a second reader looked for compile errors. Expect a few compile errors on the first build.
+- Any build. The cloud session cannot compile Apple frameworks. I checked the syntax of every changed Swift file with a tree-sitter parser. A second reader looked for compile errors and found one, a duplicate `rename` function, which commit `ce69d7d` fixes. A first build can still show other errors.
 - Any behaviour at run time, `requiredLocalEndpoint` on a `utun` address included.
 - That the App Store iPad binary matches `iOSClient/`.
 - That a free personal team can get a macOS profile with `keychain-access-groups`, and how long it lasts.
@@ -526,6 +526,7 @@ No commit changes `Sources/StreamProtocol/` or `iOSClient/`. The door keeps TLS 
 - D6. The free team's profile expires. Choose: a rebuild each week with the data-protection keychain, or no profile and the login keychain with the manual clean-up before the first launch.
 - D7. S11, no PAKE for the typed code. An attacker needs an active relay inside your tailnet during a typed pairing, and must find the code within the window. The risk is low. A fix changes kinds 19 and 20, so it needs a client change. Use the QR code to pair.
 - D8. Any device in your tailnet can reach the port. Use Tailscale ACLs to limit it to your iPad.
+- D9. Every session now comes through the Tailscale door, so the host counts every device as away. The away quality (Low · Standard by default) always runs. To stream at a higher quality, set it in Settings, Streaming, "Away from home". Or decide whether the host should count a Tailscale session as at home.
 - Risk: the first build can fail. `docs/BUILD-AND-VERIFY.md` asks you to note each failure.
 - Risk: the upstream history in the fork still holds upstream's names and email. They are not yours.
 

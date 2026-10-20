@@ -46,6 +46,7 @@ The `hardening` branch starts at the upstream commit below. Each later commit ma
 | `a7c403c` | Removes the pacing harness and fixes the menu check's server. |
 | `ee2b140` | Adds team IDs and other IPv4 addresses to the scan. |
 | `c5a9b22` | Adds the optional pf anchor template. |
+| `ce69d7d` | Fixes a duplicate `rename` function and a late listener report in `RemoteAccess`. |
 
 Later commits add the documents and fix review findings. `git log 4d990e9..hardening` shows all of them.
 

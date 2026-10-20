@@ -150,6 +150,7 @@ If you type the code instead of a scan, type the Tailscale address that the pair
 - **The free team's profile.** A development profile from a free personal team expires after a short time. Apple states 7 days for free iOS profiles. An app that embeds an expired profile does not launch. `make-app.sh` refuses an expired profile, and you must build again.
 - **The login keychain fallback.** Without a profile, Sill keeps its key in the login keychain. Another app of your user can create that item first. Before the first launch, delete old items: `security delete-generic-password -s me.saffer.sill.remote` until it says that it found none. Then also remove the key "Sill Remote Access" in Keychain Access.
 - **A new bundle ID.** A new `SILL_BUNDLE_ID` makes Sill new to macOS. You give Screen Recording and Accessibility again, Sill's settings start empty, and each device pairs again.
+- **The away quality.** Every session comes through Tailscale, so the host uses the away quality, Low · Standard by default. For a better picture, set the quality in Settings, Streaming, "Away from home".
 - **Two copies.** Launch at Login and the LaunchAgent together start two copies. The second copy finds the port in use and waits for ever.
 - **The pf anchor and utunN.** Tailscale's interface name can change after a restart. A pf anchor with an old name blocks the Sill port everywhere.
 

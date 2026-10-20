@@ -28,7 +28,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var terminating = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        DebugHooks.renderPreviewsIfAsked(model: model)      // exits when asked
         // A menu bar app with no windows open is exactly what automatic termination would end.
         ProcessInfo.processInfo.disableAutomaticTermination("Sill serves devices from the menu bar")
         ProcessInfo.processInfo.disableSuddenTermination()
@@ -57,7 +56,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // kill must then still put the streamed window back.
         HostShutdown.install { [model] in model.coordinator }
         model.start()
-        DebugHooks.schedule(model: model)
     }
 
     /// Opening Sill.app again (Finder, Spotlight, `open`) shows Settings: the way back when the

@@ -11,7 +11,9 @@ setvbuf(stdout, nil, _IOLBF, 0)
 signal(SIGPIPE, SIG_IGN)
 
 // Before anything prints: the host's lines go to the Log window's ring and the log file too.
-HostLog.shared.configure(keepLines: 5_000, fileURL: DebugHooks.logFileURL)
+let logLibrary = FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask).first
+    ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library")
+HostLog.shared.configure(keepLines: 5_000, fileURL: logLibrary.appendingPathComponent("Logs/Sill/Sill.log"))
 
 // The CLI's self-tests work here too, so the app's own identity (its TCC grants, its hardened
 // runtime) can be checked: `Sill.app/Contents/MacOS/Sill --virtual-display-selftest`.

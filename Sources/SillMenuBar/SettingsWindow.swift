@@ -172,7 +172,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         }
         let on = window?.screen.flatMap(Self.displayID).flatMap { id in ids.firstIndex(of: id) }
         guard let index = SettingsWindowFit.screenIndex(windowOn: on, screens: list) else { return nil }
-        return SettingsWindowFit.visible(list[index].visible, testHeight: DebugHooks.testScreenHeight)
+        return SettingsWindowFit.visible(list[index].visible, testHeight: nil)
     }
 
     private static func displayID(_ screen: NSScreen) -> CGDirectDisplayID? {
@@ -202,7 +202,6 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         if let used = fitVisibleFrame() {
             let real = window.screen?.visibleFrame
             screen = "screen \(window.screen?.localizedName ?? "none") visible \(real.map(r) ?? "none")"
-                + (DebugHooks.testScreenHeight != nil ? ", as \(r(used)) (-SillTestScreenHeight)" : "")
                 + "; \(n(frame.minY - used.minY)) pt over its bottom, \(n(used.maxY - frame.maxY)) under its top"
         }
         return "\(tabs.current.title): window \(r(frame)) (content \(n(content)), chrome \(n(frame.height - content))); "

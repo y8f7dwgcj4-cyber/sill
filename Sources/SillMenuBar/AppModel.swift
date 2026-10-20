@@ -69,8 +69,9 @@ final class AppModel {
         let settings = HostSettings()
         self.settings = settings
         permissions = PermissionsModel(settings: settings)
-        let updates = UpdateChecker(configuration: DebugHooks.updateConfiguration(testPattern: CommandLine.arguments.contains("--synthetic")),
-                                    automatic: settings.updateCheck)
+        var updateConfiguration = UpdateChecker.Configuration()
+        updateConfiguration.running = Self.version == "dev" ? nil : Self.version
+        let updates = UpdateChecker(configuration: updateConfiguration, automatic: settings.updateCheck)
         self.updates = updates
         // The switch reaches the checker from launch on: Settings… is in the menu before the host
         // is up (up to a second or more), and -SillSetAfter counts from launch. Before `start()`

@@ -121,7 +121,9 @@ struct PairDeviceView: View {
         case .open(_, _, let triesLeft, let wrongFrom):
             switch status.listener {
             case .portInUse(let p): return .doorDown("Can’t pair while port \(p) is in use.")
-            case .failed: return .doorDown("Can’t pair: remote access couldn’t start. Sill tries again every 30 seconds.")
+            case .failed: return .doorDown("Can’t pair: remote access couldn’t start. Sill tries again.")
+            case .notConfigured: return .doorDown("Can’t pair: Sill has no Tailscale address to listen on.")
+            case .waitingForAddress: return .doorDown("Can’t pair until Tailscale is up on this Mac.")
             case .off, .listening: return .waiting(triesLeft: triesLeft, wrongFrom: wrongFrom)
             }
         case .paired(let name): return .paired(name)

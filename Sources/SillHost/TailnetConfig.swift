@@ -9,7 +9,8 @@ import Darwin
 ///
 /// - `address`: this Mac's own Tailscale address, as a literal. IPv4 must be in 100.64.0.0/10.
 ///   IPv6 must be in fd7a:115c:a1e0::/48. A host name is refused.
-/// - `port`: optional. A number from 1024 to 65535. The default is 7455.
+/// - `port`: optional. A number from 1024 to 65535. Without it the port is the app's setting (7455
+///   by default) or the CLI's `--remote=PORT`.
 ///
 /// The door fails closed. A missing file, a bad line, an unknown key, an address outside the
 /// Tailscale ranges or a file that other users can write gives no listener at all.
@@ -20,9 +21,9 @@ package struct TailnetConfig: Equatable, Sendable {
     package let address: String
     /// The address as 4 or 16 bytes.
     package let bytes: [UInt8]
-    package let port: Int
+    /// The port from the file; nil when the file sets none.
+    package let port: Int?
 
-    package static let defaultPort = 7455
     /// A larger file is refused before it is read.
     static let maxFileSize = 4096
 
@@ -107,7 +108,7 @@ package struct TailnetConfig: Equatable, Sendable {
         }
         guard let addressText = values["address"] else { return .failure(.noAddress) }
         guard let bytes = literal(addressText), isTailscale(bytes) else { return .failure(.notTailscale(addressText)) }
-        var port = defaultPort
+        var port: Int?
         if let p = values["port"] {
             guard p.allSatisfy(\.isASCII), let n = Int(p), (1024...65535).contains(n) else { return .failure(.badPort(p)) }
             port = n

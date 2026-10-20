@@ -53,6 +53,12 @@ if let remoteFlag {
     }
 }
 
+// `SillHost --tailnet-config=PATH`: the Tailscale address file to read instead of
+// ~/Library/Application Support/Sill/tailscale.conf (docs/tailscale.conf.example). The door binds
+// only to the address in that file. Without a usable file it does not listen.
+let tailnetConfigPath = CommandLine.arguments.first { $0.hasPrefix("--tailnet-config=") }
+    .map { String($0.dropFirst("--tailnet-config=".count)) }
+
 // `SillHost --print-reachability`: the addresses this Mac would give devices away from home, as
 // its Remote Access pane lists them, read once (read-only SystemConfiguration); then exits.
 if CommandLine.arguments.contains("--print-reachability") {
@@ -125,6 +131,7 @@ func makeRemoteAccess() -> RemoteAccess {
     }
     let remote = RemoteAccess(store: store)
     if let problem = remote.identityProblem { print("Remote access unavailable: \(problem)") }
+    if let tailnetConfigPath { remote.tailnetConfigURL = URL(fileURLWithPath: tailnetConfigPath) }
     remote.reopensPairing = true
     remote.logsPairingWindows = false
     var first = true

@@ -54,6 +54,11 @@ package final class RemoteAccess {
     let trust = TrustBox()
     private var remoteAccess = false
     private var remotePort = HostConfig.defaultRemotePort
+    /// The last configuration problem printed, so that a reload with the same problem prints
+    /// nothing new.
+    private var lastConfigProblem: String?
+    /// What the door binds, from the last read of the file; nil without a usable file.
+    private var target: TailnetBind.Target?
 
     private weak var server: StreamServer?
     private weak var status: HostStatus?
@@ -86,6 +91,9 @@ package final class RemoteAccess {
     /// A paired device's session started (its key prefix, when, its route label): the app saves it
     /// for the next launch's "last connected".
     package var onSeen: ((_ keyPrefix: String, _ at: Date, _ route: String) -> Void)?
+
+    /// Where the Tailscale address file is. The CLI's `--tailnet-config=PATH` sets another.
+    package var tailnetConfigURL = TailnetConfig.defaultURL
 
     /// TEST ONLY: the file store's directory, where a test hook may leave the current pairing link
     /// and code; nil for every other store.
@@ -395,14 +403,34 @@ package final class RemoteAccess {
 
     // MARK: The door, the watcher, the status
 
-    /// The port devices dial: the configured one, or the bound one when any port was asked for.
+    /// The port devices dial: the bound one, else the one in force (the file's, else the setting).
     private var doorPort: Int? {
         if case .listening(let p) = listenerState { return p }
-        return remotePort == 0 ? nil : remotePort
+        let p = target?.port ?? remotePort
+        return p == 0 ? nil : p
     }
 
+    /// Reads the Tailscale address file again and hands the door its target. Without a usable file
+    /// the door has no listener at all (it fails closed), and the status says why.
     private func updateDoor() {
-        door?.set(wanted: remoteAccess || window.isOpen, port: remotePort)
+        guard let door else { return }
+        guard remoteAccess || window.isOpen else { door.set(wanted: false, bind: nil); return }
+        switch TailnetConfig.load(from: tailnetConfigURL) {
+        case .success(let config):
+            lastConfigProblem = nil
+            let t = TailnetBind.Target(config, port: remotePort)
+            target = t
+            door.set(wanted: true, bind: t)
+        case .failure(let problem):
+            let text = "\(problem)"
+            if text != lastConfigProblem {
+                print("Remote access: not listening: \(text). See docs/tailscale.conf.example.")
+                lastConfigProblem = text
+            }
+            target = nil
+            door.set(wanted: true, bind: nil)
+            listenerChanged(.notConfigured(text))
+        }
     }
 
     /// Reachability runs with the door.
@@ -423,6 +451,7 @@ package final class RemoteAccess {
         let first = reach == nil
         reach = snapshot
         publishTrust()
+        updateDoor()                 // the file may have changed with the network
         door?.retryNow()
         publish()
         broadcastIfChanged()

@@ -130,9 +130,14 @@ package struct RemoteStatus: Equatable {
     package enum Listener: Equatable {
         case off
         case listening(Int)
-        /// EADDRINUSE: another app has the port; retried every 30 s and on network changes.
+        /// EADDRINUSE: another app has the port; tried again with backoff and on network changes.
         case portInUse(Int)
         case failed(String)
+        /// No usable Tailscale configuration (TailnetConfig.Problem's text): no listener at all.
+        case notConfigured(String)
+        /// The configured address is not on a Tailscale interface now: tried again with backoff
+        /// and on network changes.
+        case waitingForAddress(String)
     }
     package enum Pairing: Equatable {
         case closed

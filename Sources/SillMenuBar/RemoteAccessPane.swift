@@ -78,10 +78,14 @@ struct RemoteAccessPane: View {
                 LabeledContent {
                     Button("Change…") { startEditingPort() }
                 } label: {
-                    Warning("Port \(p) is in use by another app, so devices can’t reach this Mac remotely. Sill tries again every 30 seconds.")
+                    Warning("Port \(p) is in use by another app, so devices can’t reach this Mac. Sill tries again.")
                 }
             case .failed(let error):
-                Warning("Remote access couldn’t start (\(error)). Sill tries again every 30 seconds.")
+                Warning("Remote access couldn’t start (\(error)). Sill tries again.")
+            case .notConfigured(let why):
+                Warning("Sill isn’t listening: \(why). Put this Mac’s Tailscale address in ~/Library/Application Support/Sill/tailscale.conf.")
+            case .waitingForAddress(let address):
+                Warning("Waiting for Tailscale: Sill listens on \(address) once it is up on this Mac.")
             case .off, .listening:
                 EmptyView()
             }

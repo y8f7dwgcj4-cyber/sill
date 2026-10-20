@@ -126,6 +126,8 @@ enum StatusText {
         switch r.listener {
         case .portInUse(let port): return "Port \(port) is in use"
         case .failed: return "Couldn’t start; trying again"
+        case .notConfigured: return "Not set up: no Tailscale address"
+        case .waitingForAddress: return "Waiting for Tailscale"
         case .off, .listening: break
         }
         var ways: [String] = []
@@ -147,9 +149,13 @@ enum StatusText {
         }
         switch r.listener {
         case .failed(let error):
-            return ("Not Listening", "\(error). Sill tries again every 30 seconds.")
+            return ("Not Listening", "\(error). Sill tries again.")
         case .portInUse(let port):
             return ("Not Listening", "Port \(port) is in use by another app.")
+        case .notConfigured(let why):
+            return ("Not Listening", "Sill has no Tailscale address to listen on: \(why).")
+        case .waitingForAddress(let address):
+            return ("Waiting for Tailscale", "Sill listens on \(address) when Tailscale is up on this Mac.")
         case .off:
             if !r.remoteAccess { return ("Remote Access Is Off", "Turn it on in Settings › Remote Access so paired devices can connect.") }
             return ("Starting…", nil)
@@ -171,8 +177,11 @@ enum StatusText {
 
     /// The door's listener failed, while Remote Access is on.
     private static func listenerFailed(_ r: RemoteStatus?) -> Bool {
-        guard let r, r.remoteAccess, case .failed = r.listener else { return false }
-        return true
+        guard let r, r.remoteAccess else { return false }
+        switch r.listener {
+        case .failed, .notConfigured: return true
+        case .off, .listening, .portInUse, .waitingForAddress: return false
+        }
     }
 
     /// "iPad" from "iPad (iPad14,1)".

@@ -1,8 +1,8 @@
 import Foundation
 
 /// Where a connection comes from, told from its addresses and the interface it arrived on, and
-/// whether the door admits it. The door (TLS, paired devices) serves loopback, this Mac's own
-/// networks and VPNs, and never the internet or peer-to-peer Wi-Fi.
+/// whether the door admits it. The door (TLS, paired devices) serves only Tailscale: a tunnel
+/// arrival from a source in the Tailscale ranges (`tailnetAdmits`).
 ///
 /// Defence in depth, not the boundary: a router that source-NATs a port forward makes an internet
 /// peer look like `lan`. Pairing is the boundary.
@@ -86,13 +86,23 @@ enum OriginPolicy {
         return localAddress.flatMap(IPBytes.parse).flatMap { interfaces.owner[$0] }
     }
 
-    /// The door: loopback, this Mac's networks and VPNs. Never the internet, and never
-    /// peer-to-peer Wi-Fi.
+    /// The door admits a tunnel arrival only. Loopback, this Mac's networks, peer-to-peer Wi-Fi and
+    /// the internet are refused. The door binds only to the Tailscale address, so a tunnel arrival
+    /// is Tailscale's.
     static func remoteAdmits(_ o: Origin) -> Bool {
         switch o {
-        case .loopback, .lan, .vpn: return true
-        case .internet, .direct: return false
+        case .vpn: return true
+        case .loopback, .lan, .internet, .direct: return false
         }
+    }
+
+    /// The door's whole origin rule: a tunnel arrival (`remoteAdmits`) from a source in the
+    /// Tailscale ranges (IPBytes.isTailscale). A source outside them, or one that cannot be
+    /// read, is refused. The door's reply to a forged Tailscale source goes out through the tunnel,
+    /// so such a peer cannot complete the TCP handshake.
+    static func tailnetAdmits(_ o: Origin, source: [UInt8]?) -> Bool {
+        guard remoteAdmits(o), let source else { return false }
+        return IPBytes.isTailscale(IPBytes.unmapped(source))
     }
 
     /// How the Mac's card and log name a remote route: "through Tailscale" (the VPN service's own
@@ -165,6 +175,20 @@ enum IPBytes {
     static func isPrivate(_ a: [UInt8]) -> Bool {
         if a.count == 4 { return a[0] == 10 || (a[0] == 172 && a[1] & 0xF0 == 16) || (a[0] == 192 && a[1] == 168) }
         return a[0] & 0xFE == 0xFC
+    }
+
+    /// Tailscale's node addresses: 100.64.0.0/10 and fd7a:115c:a1e0::/48. Its own service
+    /// address 100.100.100.100 (MagicDNS) is no node address, so it is refused.
+    static func isTailscale(_ a: [UInt8]) -> Bool {
+        if a.count == 4 {
+            if a == [100, 100, 100, 100] { return false }
+            return contains(network: [100, 64, 0, 0], bits: 10, address: a)
+        }
+        if a.count == 16 {
+            let prefix: [UInt8] = [0xfd, 0x7a, 0x11, 0x5c, 0xa1, 0xe0] + [UInt8](repeating: 0, count: 10)
+            return contains(network: prefix, bits: 48, address: a)
+        }
+        return false
     }
 
     /// 100.64/10, shared address space (carrier NAT, and Tailscale's own range).

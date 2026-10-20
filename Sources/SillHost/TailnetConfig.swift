@@ -127,17 +127,6 @@ package struct TailnetConfig: Equatable, Sendable {
         return nil
     }
 
-    /// Tailscale's node addresses: 100.64.0.0/10 and fd7a:115c:a1e0::/48. Its own service
-    /// address 100.100.100.100 (MagicDNS) is no node address, so it is refused.
-    package static func isTailscale(_ a: [UInt8]) -> Bool {
-        if a.count == 4 {
-            if a == [100, 100, 100, 100] { return false }
-            return IPBytes.contains(network: [100, 64, 0, 0], bits: 10, address: a)
-        }
-        if a.count == 16 {
-            let prefix: [UInt8] = [0xfd, 0x7a, 0x11, 0x5c, 0xa1, 0xe0] + [UInt8](repeating: 0, count: 10)
-            return IPBytes.contains(network: prefix, bits: 48, address: a)
-        }
-        return false
-    }
+    /// Tailscale's node addresses (IPBytes.isTailscale).
+    package static func isTailscale(_ a: [UInt8]) -> Bool { IPBytes.isTailscale(a) }
 }

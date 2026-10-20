@@ -27,9 +27,9 @@ enum DoorPolicy {
     // MARK: Before the connection starts
 
     /// The word for the minute's summary for a connection refused before it started; nil when its
-    /// origin is one the door admits (OriginPolicy.remoteAdmits).
-    static func refusalBeforeStart(origin: OriginPolicy.Origin) -> String? {
-        OriginPolicy.remoteAdmits(origin) ? nil : "outside"
+    /// origin and source are ones the door admits (OriginPolicy.tailnetAdmits).
+    static func refusalBeforeStart(origin: OriginPolicy.Origin, source: [UInt8]?) -> String? {
+        OriginPolicy.tailnetAdmits(origin, source: source) ? nil : "outside"
     }
 
     // MARK: The verify block

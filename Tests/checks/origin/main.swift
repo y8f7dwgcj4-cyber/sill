@@ -71,7 +71,11 @@ expect("unknown arrival: 100.64/10 on-link of bridge0 (any LAN interface)", c("1
 expect("an unparseable source is internet", c("not-an-address"), .internet)
 // The doors
 let all: [P.Origin] = [.loopback, .direct, .vpn, .lan, .internet]
-check("the door: loopback, vpn, lan; never direct or the internet", all.filter(P.remoteAdmits) == [.loopback, .vpn, .lan])
+check("the door: a tunnel arrival only", all.filter(P.remoteAdmits) == [.vpn])
+check("tailnet: a Tailscale source on a tunnel", P.tailnetAdmits(.vpn, source: b("100.101.102.103")) && P.tailnetAdmits(.vpn, source: b("fd7a:115c:a1e0::1")))
+check("tailnet: a source outside the ranges is refused", !P.tailnetAdmits(.vpn, source: b("10.8.0.6")) && !P.tailnetAdmits(.vpn, source: b("100.128.0.1")))
+check("tailnet: 100.100.100.100 and a missing source are refused", !P.tailnetAdmits(.vpn, source: b("100.100.100.100")) && !P.tailnetAdmits(.vpn, source: nil))
+check("tailnet: a Tailscale source on a LAN arrival is refused", !P.tailnetAdmits(.lan, source: b("100.101.102.103")))
 check("labels", P.label(.vpn, interface: "utun4", serviceName: "Tailscale") == "through Tailscale" && P.label(.vpn, interface: "utun6", serviceName: nil) == "through your VPN"
       && P.label(.internet, interface: nil, serviceName: nil) == "over the internet" && P.label(.lan, interface: "en0", serviceName: nil) == "by address"
       && P.label(.loopback, interface: nil, serviceName: nil) == "by address" && P.label(.direct, interface: "awdl0", serviceName: nil) == nil)

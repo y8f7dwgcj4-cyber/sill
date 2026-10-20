@@ -36,7 +36,7 @@ The repository has these main parts:
 
 **Host.** The host is the Mac side of Sill. It captures windows, encodes them as HEVC video and sends them to the iPad. Sill.app and `SillHost` run the same host.
 
-**Tailscale address.** Tailscale gives each device in your tailnet an address in 100.64.0.0/10, and an IPv6 address in fd7a:115c:a1e0::/48. Only devices that your Tailscale account admits can send packets to it. In this fork, the host listens on that one address.
+**Tailscale address.** Tailscale gives each device in your tailnet an IPv4 address in 100.64.0.0/10. It also gives an IPv6 address in fd7a:115c:a1e0::/48. Only devices that your Tailscale account admits can send packets to it. In this fork, the host listens on that one address.
 
 **Door.** The door is the host's only TLS listener. It admits a paired device for a session, and an unpaired device only while you have a pairing window open. Everything else gets no Sill byte.
 
@@ -56,7 +56,7 @@ The repository has these main parts:
 ## Known traps
 
 - With FileVault on, the host starts only after you log in at the Mac after a restart.
-- The host cannot work if Tailscale is not running on the Mac.
+- The host cannot work while Tailscale is off on the Mac.
 - Without a provisioning profile, Sill keeps its key in the login keychain. `docs/BUILD-AND-VERIFY.md` tells you how to clear old items before the first launch.
 - Nobody has built or run this branch on a Mac yet.
 

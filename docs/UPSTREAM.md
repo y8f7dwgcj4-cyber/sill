@@ -42,7 +42,7 @@ The `hardening` branch starts at the upstream commit below. Each later commit ma
 | `3c903fd` | Adds `Scripts/check-personal-info.sh`. |
 | `a710e07` | Fixes two errors in that scan. |
 | `62d2fc6` | Adds the `SillHostTests` unit test target. |
-| `a97681b` | Removes the release tooling, the website and other upstream-only files. |
+| `a97681b` | Removes the release tools, the website and other upstream-only files. |
 | `a7c403c` | Removes the pacing harness and fixes the menu check's server. |
 | `ee2b140` | Adds team IDs and other IPv4 addresses to the scan. |
 | `c5a9b22` | Adds the optional pf anchor template. |
@@ -67,15 +67,15 @@ Later commits add the documents and fix review findings. `git log 4d990e9..harde
 
 The App Store iPad app depends on these items. A rebase must not change any of them:
 
-- the 14-byte message header in `Sources/StreamProtocol/StreamMessage.swift`;
-- the message kinds 0 to 28 and 32, and their payloads;
-- the ALPNs `sill/1` and `sill-pair/1`, and the SNI `sill`, in `Sources/StreamProtocol/RemoteTLS.swift`;
-- TLS 1.3 with self-signed P-256 certificates and SPKI SHA-256 pins;
-- the pairing link `sill://pair?…` in `Sources/StreamProtocol/Pairing.swift`;
-- the pairing proofs and the 12-digit code with PBKDF2-SHA256 at 600,000 rounds;
-- the fields of kinds 18, 19, 20 and 22 in `Sources/StreamProtocol/Remote.swift`;
-- the hello, kind 23, and the device floor "0" in `Sources/SillHost/DeviceGate.swift`;
-- the default port 7455.
+- the 14-byte message header in `Sources/StreamProtocol/StreamMessage.swift`
+- the message kinds 0 to 28 and 32, and their payloads
+- the ALPNs `sill/1` and `sill-pair/1`, and the SNI `sill`, in `Sources/StreamProtocol/RemoteTLS.swift`
+- TLS 1.3 with self-signed P-256 certificates and SPKI SHA-256 pins
+- the pairing link `sill://pair?…` in `Sources/StreamProtocol/Pairing.swift`
+- the pairing proofs and the 12-digit code with PBKDF2-SHA256 at 600,000 rounds
+- the fields of kinds 18, 19, 20 and 22 in `Sources/StreamProtocol/Remote.swift`
+- the hello, kind 23, and the device floor "0" in `Sources/SillHost/DeviceGate.swift`
+- the default port 7455
 
 ## Concepts
 

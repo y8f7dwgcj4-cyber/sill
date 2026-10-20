@@ -25,7 +25,7 @@ You do eight steps:
 
 Do this before the first build. The repository is untrusted until you read what runs.
 
-1. Open `Package.swift`. Make sure that it has no `dependencies:` entry. The package uses Apple frameworks only.
+1. Open `Package.swift`. Make sure that `Package(` has no `dependencies:` list of its own. The `dependencies:` of each target name only local targets.
 2. Open `Scripts/make-app.sh`. Read it from top to bottom. It runs these tools: `swift build`, `xcrun vtool`, `qlmanage`, `xcrun actool`, `PlistBuddy`, `plutil`, `security cms`, `codesign`, `ditto`, `pkill` and `lsregister`.
 3. Look at `git log e4737d2..hardening`. Read each commit. `docs/UPSTREAM.md` lists what each commit does.
 4. Do not build the iOS project in `iOSClient/`. You use the App Store app.
@@ -118,7 +118,7 @@ If you type the code instead of a scan, type the Tailscale address that the pair
 
 ## Concepts
 
-**Tailscale address.** Tailscale gives each device in your tailnet an address in 100.64.0.0/10, and an IPv6 address in fd7a:115c:a1e0::/48. Only devices that your Tailscale account admits can send packets to it. In this system, the host listens on that one address and on no other address.
+**Tailscale address.** Tailscale gives each device in your tailnet an IPv4 address in 100.64.0.0/10. It also gives an IPv6 address in fd7a:115c:a1e0::/48. Only devices that your Tailscale account admits can send packets to it. In this system, the host listens on that one address and on no other address.
 
 **Door.** The door is the one TLS listener of the host. It accepts a paired device for a session, and an unpaired device only while a pairing window is open. In this system, the door is the only way into the host.
 

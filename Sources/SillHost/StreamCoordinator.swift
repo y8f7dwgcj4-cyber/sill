@@ -250,6 +250,8 @@ package final class StreamCoordinator {
     /// The quality the devices' links are judged at: the running stream's (`select`'s commit), nil
     /// while nothing streams. A restart that keeps it keeps their judgement (LinkJudge.judgedAfresh).
     private var judgedQuality: LinkJudge.Quality?
+    /// The health file for the command line (status.json).
+    private let statusFile = StatusFile()
     /// The streamed app's menus, for the devices that asked for them (kinds 24, 25 and 27,
     /// MenuMirror). Reads and presses nothing for a device that never asked.
     let menus: MenuMirror
@@ -324,7 +326,12 @@ package final class StreamCoordinator {
         // Every change of the snapshot re-publishes the devices' settings state (deduplicated, so
         // the once-a-second stats send nothing). One before the door starts reaches nobody, and
         // every device gets a fresh state in `sendCatalog`, so early calls are harmless.
-        status.onChange = { [weak self] in self?.publishSettings() }
+        status.onChange = { [weak self] in
+            guard let self else { return }
+            self.publishSettings()
+            self.statusFile.update(StatusFile.Health(self.status.snapshot))
+        }
+        statusFile.update(StatusFile.Health(status.snapshot))
         menus.prepare = { [weak self] in await self?.focusForMenus() ?? true }
         menus.currentTarget = { [weak self] in self?.menuTarget() }
         menus.onSubscribersChanged = { [weak self] any in self?.watchFrontmostApp(any) }

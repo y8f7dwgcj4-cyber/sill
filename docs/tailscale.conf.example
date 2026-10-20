@@ -1,0 +1,18 @@
+# Sill: the Tailscale address that the door listens on.
+#
+# Copy this file to:
+#   ~/Library/Application Support/Sill/tailscale.conf
+#
+# Then set the mode so that only you can write it:
+#   chmod 600 ~/Library/Application\ Support/Sill/tailscale.conf
+#
+# Sill reads the file at launch and again when the network changes.
+# If the file is missing or wrong, Sill does not listen at all.
+
+# This Mac's own Tailscale address. Get it with: tailscale ip -4
+# It must be in 100.64.0.0/10, or in fd7a:115c:a1e0::/48 for IPv6.
+# Do not write a host name here.
+address = 100.x.y.z
+
+# Optional. The TCP port. The default is 7455.
+# port = 7455

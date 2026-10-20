@@ -51,3 +51,23 @@ enum TailnetBind {
         return .hostPort(host: host, port: port)
     }
 }
+
+/// `SillHost --print-tailnet`: what the door would bind, read once; then the CLI exits. Read-only:
+/// it opens no listener.
+package enum TailnetReport {
+    package static func lines(url: URL) -> [String] {
+        switch TailnetConfig.load(from: url) {
+        case .failure(let problem):
+            return ["Configuration: \(url.path)", "Not usable: \(problem). The door would not listen."]
+        case .success(let config):
+            var out = ["Configuration: \(url.path)", "Address: \(config.address)",
+                       "Port: \(config.port.map(String.init) ?? "not set (the app's setting, 7455 by default)")"]
+            if let name = TailnetBind.owner(of: config.bytes, in: InterfaceSnapshot.read()) {
+                out.append("On interface \(name): the door would bind now.")
+            } else {
+                out.append("Not on any up tunnel interface: the door would wait for it.")
+            }
+            return out
+        }
+    }
+}

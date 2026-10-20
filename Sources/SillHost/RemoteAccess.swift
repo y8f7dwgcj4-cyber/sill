@@ -4,7 +4,7 @@ import Security
 import StreamProtocol
 
 /// Pairing and remote access on one host: the Mac's identity and trust list, the pairing window,
-/// the addresses (Reachability, AddressList), the remote door (RemoteServer) and kind 18. The
+/// the Tailscale address (TailnetConfig), the door (RemoteServer) and kind 18. The
 /// coordinator owns one: Sill.app always, SillHost only with --remote. Main actor. The door runs
 /// on the network queue and reads only `trust`, a lock-protected snapshot replaced whole on every
 /// change, so nothing there waits on this actor.
@@ -388,7 +388,7 @@ package final class RemoteAccess {
 
     private func deliverOfferIfReady(force: Bool) {
         guard let pendingOffer = offerPending, let identity, let w = window.current else { offerPending = nil; return }
-        guard let port = doorPort, force || reach != nil else { return }
+        guard let port = doorPort, force || target != nil else { return }
         let links = addresses().prefix(PairLink.maxAddresses).compactMap { a -> ParsedAddress? in
             guard case .success(var p) = AddressParser.parse(a.host) else { return nil }
             p.port = a.port
@@ -465,10 +465,12 @@ package final class RemoteAccess {
         if case .listening = state { deliverOfferIfReady(force: false) }
     }
 
-    /// In dial order; empty while Remote Access is off and no window is open.
+    /// The one address devices are given: the configured Tailscale address. Kind 18 and the QR
+    /// link carry it alone, never this Mac's other addresses. Empty while Remote Access is off and
+    /// no window is open, and without a usable configuration.
     private func addresses() -> [MacAddress] {
-        guard remoteAccess || window.isOpen else { return [] }
-        return AddressList.build(reach.map(Reachability.input) ?? AddressList.Input())
+        guard remoteAccess || window.isOpen, let target else { return [] }
+        return [MacAddress(host: target.address, kind: MacAddress.vpn, via: "Tailscale")]
     }
 
     private func publishTrust() {
@@ -493,10 +495,9 @@ package final class RemoteAccess {
                                        name: d.displayName, model: d.model, pairedAt: Date(timeIntervalSince1970: d.pairedAt),
                                        method: d.method, lastSeen: seen?.at, lastRoute: seen?.route)
         }
-        let input = reach.map(Reachability.input)
         let remote = RemoteStatus(remoteAccess: remoteAccess, listener: listenerState, addresses: addresses(),
                                   vpnDown: reach.map { AddressList.vpnDown(setupVPNs: $0.setupVPNs, services: $0.services) } ?? [],
-                                  lanAddress: input.flatMap(AddressList.lanAddress),
+                                  lanAddress: nil,
                                   pairing: pairingState, paired: summaries, identityProblem: identityProblem)
         status.update { $0.remote = remote }
     }
@@ -507,13 +508,13 @@ package final class RemoteAccess {
 
     // MARK: Kind 18
 
-    /// Who this Mac is and how to reach it, as of now (issuedAt 0: the comparison ignores it). No
-    /// addresses before the first look at this Mac's networks: a device keeps what it has when the
-    /// list is empty, and the first look broadcasts the real one.
+    /// Who this Mac is and how to reach it, as of now (issuedAt 0: the comparison ignores it). The
+    /// address list is the configured Tailscale address alone. A device keeps what it has when the
+    /// list is empty.
     private func currentInfo() -> MacInfo? {
         guard let identity else { return nil }
         return MacInfo(macID: identity.macID, name: macName, issuedAt: 0, remoteAccess: remoteAccess,
-                       remotePort: doorPort ?? remotePort, internet: false, addresses: reach == nil ? [] : addresses())
+                       remotePort: doorPort ?? remotePort, internet: false, addresses: addresses())
     }
 
     /// Kind 18, signed, issued now: in every catalog right after kind 16.

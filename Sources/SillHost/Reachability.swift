@@ -187,27 +187,3 @@ final class Reachability: @unchecked Sendable {
         AddressList.Input(services: s.services, primaryInterface: s.primaryInterface, tunnels: s.tunnels, magicDNS: s.magicDNS)
     }
 }
-
-/// `SillHost --print-reachability`: the Mac's remote addresses as its pane would list them
-/// (label, address, kind), read once, read-only; no listener, no router query.
-package enum ReachabilityReport {
-    package static func lines() -> [String] {
-        let snap = Reachability.read()
-        let list = AddressList.build(Reachability.input(snap))
-        var out: [String] = []
-        let width = max(12, (list.map(\.via.count).max() ?? 0) + 2)
-        let addressWidth = max(16, (list.map { $0.host.count + ($0.port.map { ":\($0)".count } ?? 0) }.max() ?? 0) + 2)
-        for a in list {
-            let address = a.port.map { "\(a.host):\($0)" } ?? a.host
-            out.append(a.via.padding(toLength: width, withPad: " ", startingAt: 0)
-                       + address.padding(toLength: addressWidth, withPad: " ", startingAt: 0) + a.kind)
-        }
-        for name in AddressList.vpnDown(setupVPNs: snap.setupVPNs, services: snap.services) {
-            out.append("\(name) — Not connected")
-        }
-        if !list.contains(where: { $0.kind == "vpn" }) && snap.setupVPNs.isEmpty {
-            out.append("No VPN is running on this Mac.")
-        }
-        return out
-    }
-}

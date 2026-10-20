@@ -59,10 +59,11 @@ if let remoteFlag {
 let tailnetConfigPath = CommandLine.arguments.first { $0.hasPrefix("--tailnet-config=") }
     .map { String($0.dropFirst("--tailnet-config=".count)) }
 
-// `SillHost --print-reachability`: the addresses this Mac would give devices away from home, as
-// its Remote Access pane lists them, read once (read-only SystemConfiguration); then exits.
-if CommandLine.arguments.contains("--print-reachability") {
-    for line in ReachabilityReport.lines() { print(line) }
+// `SillHost --print-tailnet`: the Tailscale address file, the address and port it names, and
+// whether a tunnel interface holds that address now; then exits. Read-only: no listener opens.
+if CommandLine.arguments.contains("--print-tailnet") {
+    let url = tailnetConfigPath.map { URL(fileURLWithPath: $0) } ?? TailnetConfig.defaultURL
+    for line in TailnetReport.lines(url: url) { print(line) }
     exit(0)
 }
 

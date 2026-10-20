@@ -59,6 +59,10 @@ package final class RemoteAccess {
     private var lastConfigProblem: String?
     /// What the door binds, from the last read of the file; nil without a usable file.
     private var target: TailnetBind.Target?
+    /// Held while the door listens: the Mac does not go to idle sleep, so a paired device can
+    /// always reach it (decision D5). The display can still sleep, and a closed laptop lid still
+    /// puts the Mac to sleep.
+    private var sleepActivity: NSObjectProtocol?
 
     private weak var server: StreamServer?
     private weak var status: HostStatus?
@@ -460,6 +464,7 @@ package final class RemoteAccess {
 
     private func listenerChanged(_ state: RemoteStatus.Listener) {
         listenerState = state
+        if case .listening = state { holdIdleSleep(true) } else { holdIdleSleep(false) }
         publish()
         broadcastIfChanged()
         if case .listening = state { deliverOfferIfReady(force: false) }
@@ -471,6 +476,19 @@ package final class RemoteAccess {
     private func addresses() -> [MacAddress] {
         guard remoteAccess || window.isOpen, let target else { return [] }
         return [MacAddress(host: target.address, kind: MacAddress.vpn, via: "Tailscale")]
+    }
+
+    /// Starts or ends the idle-sleep hold, with one log line for each change.
+    private func holdIdleSleep(_ on: Bool) {
+        if on, sleepActivity == nil {
+            sleepActivity = ProcessInfo.processInfo.beginActivity(options: [.idleSystemSleepDisabled],
+                                                                  reason: "Sill is listening for paired devices on Tailscale")
+            print("Remote access: this Mac stays out of idle sleep while Sill listens.")
+        } else if !on, let activity = sleepActivity {
+            ProcessInfo.processInfo.endActivity(activity)
+            sleepActivity = nil
+            print("Remote access: idle sleep is allowed again (Sill is not listening).")
+        }
     }
 
     private func publishTrust() {

@@ -1,6 +1,6 @@
 # Hardening report: Sill host for one Mac on a Tailscale network
 
-Status: checkpoint after Phase 2. No code has changed yet. The plan in section 5 waits for approval.
+Status: Phase 3 and Phase 4 are done on the `hardening` branch. Sections 1 to 8 are the checkpoint report, as you approved it. Sections 9 to 13 tell you what changed, what did not, and what is open. Nobody has built or run the branch.
 
 ## 1. Scope and start point
 
@@ -359,7 +359,7 @@ Your earlier analysis is correct.
 - Preferences: `UserDefaults` domain `me.saffer.sill.mac`. See S7.
 - Test hooks (`SILL_TEST_*` variables, `-Sill…` arguments) are ignored by `Sill.app` (`DoorPolicy.isTestHost`, `TestHooks.swift`). A few preview arguments still work in the bundle. They do not touch the doors.
 
-## 5. Plan for Phase 3 (waits for approval)
+## 5. Plan for Phase 3 (approved)
 
 One commit for each item. Each item names the files it changes.
 
@@ -407,7 +407,9 @@ One commit for each item. Each item names the files it changes.
 - T1. XCTest target `SillHostTests` with tests for the config parser, the address check and bind decision, and OriginPolicy. It runs with `xcodebuild test -scheme Sill-Package -destination 'platform=macOS'`.
 - D-docs. `docs/BUILD-AND-VERIFY.md`, `docs/UPSTREAM.md`, `docs/pf-tailscale-only.conf.example`, and STE versions of `README.md` and `SECURITY.md`.
 
-## 6. Decisions for you
+## 6. Decisions for you (answered)
+
+Your answers: D1, the stronger data protection option. D2, remove the unreachable code. D3, the CLI is Tailscale-only. D4, clipboard on. D5, option 1: hold an idle-sleep assertion while the door listens.
 
 - D1. Keychain: accept options 2 and 3 for now, or do I add an Xcode project for the host to get the data-protection keychain with a free personal team?
 - D2. Bloat in the network code: keep the unreachable home door code (small diff, easy rebase), or remove it (smaller attack surface, hard rebase)?
@@ -425,3 +427,110 @@ One commit for each item. Each item names the files it changes.
 ## 8. Comments that do not follow STE
 
 I leave comments in code that I do not change. Almost every source file has comments that do not follow ASD-STE100 (long sentences, semicolons, contractions). Section 9 of the final report will list the files that I changed and the files that I did not.
+
+## 9. What changed in Phase 3
+
+`docs/UPSTREAM.md` lists every commit. This section groups them by goal.
+
+### 9.1 Listen only on the Tailscale address
+
+- `TailnetConfig.swift` reads `~/Library/Application Support/Sill/tailscale.conf`. It takes one literal address in `100.64.0.0/10` or `fd7a:115c:a1e0::/48`, and an optional port. It refuses a host name, a zone, a range, `100.100.100.100`, an unknown key, a second value for a key, a symbolic link, a file that another user owns, and a file that the group or other users can write.
+- `RemoteServer.swift` binds with `NWParameters.requiredLocalEndpoint` to that address and port. It never binds to a wildcard address. It binds only while an up tunnel interface holds the address (`TailnetBind.owner`).
+- Fail closed: without a usable file, the door opens no listener. The log, the menu, the Remote Access pane and `status.json` say why.
+- The bind tries again after 2, 4, 8, 16, 32 and then every 60 seconds. A network change, a wake from sleep and a 30-second check make it look again. When the address goes away, the listener stops. When the address comes back, the listener binds again.
+- `OriginPolicy.tailnetAdmits` admits only a tunnel arrival from a Tailscale source. Loopback, the LAN, peer-to-peer Wi-Fi and the internet get no byte. Because of the bind, a forged Tailscale source from the LAN cannot complete the TCP handshake: the reply goes into the tunnel.
+- Kind 18 and the pairing link carry only the configured address. Before, they carried every LAN, VPN and internet address of the Mac.
+- Remote Access is on by default. The switch stays as a way to stop the door. The CLI always runs the door.
+
+Deviation from N6: I did not refuse "the Mac's own addresses" by a separate rule. With the bind on the Tailscale address, a connection from the Mac itself arrives from that same address on `lo0`, which is not a tunnel. So `remoteAdmits` refuses it already. Deviation from 3a: there is no loopback exception for tests. The door binds to the Tailscale address, so loopback cannot reach it.
+
+### 9.2 Removed for the Tailscale-only setup (decision D2)
+
+One commit (`80e6aac`) removes the home door and its parts together. They share types, so smaller commits would not compile one by one. This is a deviation from "one change per commit".
+
+- The home door in `StreamServer.swift`: the plain door, the TLS home door, the listener and its live swap.
+- Bonjour: the `_sill._tcp` service, the TXT record (`HostIdentity.txtRecord`) and `NSBonjourServices` in `Info.plist`.
+- Direct Wireless (AWDL): `HostConfig.directWireless`, the menu item, the Settings row. A device that asks for it is refused.
+- USB cable pairing: `CableLink.swift`, `CableReport.swift`, the IOKit reads in `InterfaceSnapshot.swift`, the cable notice window, `--print-cable`.
+- The pairing ask and kind 21: `AskLimits`, `SessionLock.swift`, the "‹device› Wants to Pair" menu item. The door answers an ask or a cancel `closed`, as the remote door did before.
+- Require pairing: `RequirePairingValue`, its keychain item, the Devices pane's switch. Every session needs a paired key.
+- The internet switch, the address name and the router query: `RouterAddress.swift`, the Internet section of the Remote Access pane, `--internet`.
+- `ClientLink.swift` (the home door's route word) and `TestHooks.swift` (the home door's test hooks).
+- The checks of removed code: `ask-limits`, `cable-link`, `clientlink`, `door-policy`, `home-records`. `Tests/SillHostTests` covers the new `DoorPolicy`.
+
+### 9.3 Other removals (3e)
+
+- The update check (`UpdateChecker.swift`, `UpdatePolicy.swift`, its check, `Scripts/sillfeed.py`): the only outbound call, to `api.github.com`.
+- The app's test hooks and preview renderer (`DebugHooks.swift`): launch arguments that any process could pass.
+- The release workflows, `Scripts/release.sh`, `Scripts/release-ios.sh`, `Scripts/make-dmg.sh`, `Scripts/dmg-layout/` and its check, `Packaging/ExportOptions-appstore.plist`, and `Packaging/SillRelease.entitlements`, which held the upstream team ID.
+- `site/`, `design/screenshots/`, `design/DMGBackground.svg`, `.github/FUNDING.yml` and `.github/ISSUE_TEMPLATE/`.
+- `docs/release-checklist.md`, `docs/app-store-metadata.md`, `docs/BRIEF.md`, `docs/DEVELOPMENT.md` and the 20 plans under `docs/`. They describe upstream work, many of them for removed features, and some hold upstream's home paths.
+- `Scripts/pacing/`, which compiled the removed home door.
+- `--print-reachability` and `ReachabilityReport`. `--print-tailnet` replaces them.
+- The upstream `CLAUDE.md`, 6,126 lines of upstream work log. A short file for this fork replaces it.
+
+### 9.4 Personal information (3b)
+
+- `Packaging/Local.xcconfig` holds `SILL_BUNDLE_ID`, `SILL_TEAM_ID`, `SILL_SIGN_IDENTITY` and `SILL_PROVISION_PROFILE`. Git ignores it. `Packaging/Local.xcconfig.example` has placeholders. `make-app.sh` reads only those four keys, and only values of safe characters, without running the file.
+- Deviation from P1: the plan named the file `Local.config`. I used `Local.xcconfig`, the name in your prompt, with the xcconfig syntax. The host has no Xcode project, so `make-app.sh` reads it.
+- `Scripts/check-personal-info.sh` scans the tracked files, the staged changes and, with `--history`, every commit. It fails on your own values from `~/.config/sill/private-patterns.txt` and on a tracked local-only file. It lists emails, Tailscale and other IPv4 addresses, MagicDNS names, home paths and team IDs for review.
+- Bundle ID effects: a new `SILL_BUNDLE_ID` gives new Screen Recording and Accessibility grants, a new `UserDefaults` domain, a new keychain access group and so a new Mac key. Each device pairs again. The iPad checks only the pinned key, never the bundle ID, so the wire contract does not change.
+- Not changed: `iOSClient/Sill.xcodeproj` holds the upstream team ID `9B2KKVM937` and the bundle ID `me.saffer.sill`. Those are upstream's values, not yours, and you asked me not to change the client.
+- The upstream identifiers `me.saffer.sill.remote` (the keychain service), `me.saffer.sill.clipboard` (a pasteboard type) and `me.saffer.sill.mac` (the default bundle ID in `Packaging/Info.plist`) stay. They are upstream's public names, and the clipboard type is part of the behaviour that the iPad app sees.
+
+### 9.5 Keychain (decision D1)
+
+- With a provisioning profile at `Packaging/embedded.provisionprofile`, `make-app.sh` makes the entitlements from your values (`com.apple.application-identifier`, `com.apple.developer.team-identifier`, `keychain-access-groups`). It signs a development build with them too, not only a release. `IdentityStorePlan` then picks the data-protection keychain.
+- `AppModel.entitledKeychainAccessGroup` now matches the running bundle ID, not the upstream one.
+- Without a profile, the build uses the login keychain, as before. `docs/BUILD-AND-VERIFY.md` tells you how to delete old items before the first launch.
+- Open risk: a free personal team's profile expires after a short time. Apple states 7 days for free iOS profiles. An app that embeds an expired profile does not launch. Then the always-on Mac needs a rebuild each week. See section 12.
+
+### 9.6 Reliability (3d)
+
+- `Packaging/LaunchAgent/local.sill.host.plist.example`: runs Sill.app in the user's session (`LimitLoadToSessionType` Aqua), restarts it after a crash, sends standard output to `/dev/null`.
+- Logs: `Sill.app` already writes `~/Library/Logs/Sill/Sill.log` and moves it to `Sill.1.log` at 10 MB, so at most about 20 MB. The CLI writes to standard output only.
+- `status.json` in `~/Library/Application Support/Sill/`: the listener state, the address, the port, device counts, streaming and the encoder. Written on a change and every 30 seconds, mode 0600. `lsof -nP -iTCP -sTCP:LISTEN` shows the bind.
+- Sleep: while the door listens, the host holds `ProcessInfo` activity `.idleSystemSleepDisabled` (D5).
+- Wake: the door reads the file again and checks its address at the wake and 5 seconds later.
+- Display change, screen lock and a lost client: I changed nothing. The upstream code stops capture when the last device leaves, and evicts a remote client after 8 seconds of silence. I did not trace a display change or a screen lock from end to end.
+
+### 9.7 Tests (3g)
+
+- `Tests/SillHostTests` is an XCTest target in `Package.swift`. It tests the config parser and its file checks, the bind's interface choice, endpoint and backoff, the Tailscale-only origin rule, and the door's admission rules.
+- Run: `swift test`, or `xcodebuild test -scheme Sill-Package -destination 'platform=macOS'`.
+- The upstream checks under `Tests/checks` that compile changed files were updated: `origin`, `away-quality`, `home-model`.
+
+### 9.8 Wire contract
+
+No commit changes `Sources/StreamProtocol/` or `iOSClient/`. The door keeps TLS 1.3, the pins, the ALPNs, the pairing proofs and every message kind. The host sends `directWireless` as nil in kind 16, which a host without Direct Wireless always did. A device sees no Direct Wireless row.
+
+## 10. What I did not change, and why
+
+- `Sources/StreamProtocol/` and `iOSClient/`: the wire contract and your instruction.
+- `PairingWindowAddress.swift` and `AddressList.build`: they still work with the one Tailscale address. `AddressList.build` is now used only by its checks. It can go in a later cleanup.
+- `Scripts/sillclient.py`: its default is the removed plain door. It still works with `--tls`.
+- The S11 finding (no PAKE): a fix changes the pairing proof, which is part of the wire contract.
+- `KeychainIdentityStore.swift`'s logic: only its Require pairing item went.
+
+## 11. What I could not verify
+
+- Any build. The cloud session cannot compile Apple frameworks. I checked the syntax of every changed Swift file with a tree-sitter parser, and a second reader looked for compile errors. Expect a few compile errors on the first build.
+- Any behaviour at run time, `requiredLocalEndpoint` on a `utun` address included.
+- That the App Store iPad binary matches `iOSClient/`.
+- That a free personal team can get a macOS profile with `keychain-access-groups`, and how long it lasts.
+- Screen capture with the screen locked, and before login after a restart.
+- The scan script on macOS. I ran it on Linux with GNU tools. macOS has BSD `grep` and `sed`.
+
+## 12. Open risks and decisions for you
+
+- D6. The free team's profile expires. Choose: a rebuild each week with the data-protection keychain, or no profile and the login keychain with the manual clean-up before the first launch.
+- D7. S11, no PAKE for the typed code. An attacker needs an active relay inside your tailnet during a typed pairing, and must find the code within the window. The risk is low. A fix changes kinds 19 and 20, so it needs a client change. Use the QR code to pair.
+- D8. Any device in your tailnet can reach the port. Use Tailscale ACLs to limit it to your iPad.
+- Risk: the first build can fail. `docs/BUILD-AND-VERIFY.md` asks you to note each failure.
+- Risk: the upstream history in the fork still holds upstream's names and email. They are not yours.
+
+## 13. Comments that do not follow STE
+
+I wrote the new files and the changed comments in STE: `TailnetConfig.swift`, `TailnetBind.swift`, `StatusFile.swift`, the new tests, the new parts of `RemoteServer.swift`, `RemoteAccess.swift`, `DoorPolicy.swift`, `OriginPolicy.swift` and `Door.swift`, `Scripts/check-personal-info.sh`, the templates and the documents.
+
+The comments that I did not touch do not follow STE. That is true of almost every Swift file under `Sources/`, of `Scripts/make-app.sh` outside its new parts, of `Tests/checks/`, of `Scripts/encoder-check/`, `Scripts/menu-check/` and `Scripts/restore-probe/`, of `design/README.md` and of `Tests/checks/README.md`. In the files that I changed, the old comments around my changes keep their upstream style.

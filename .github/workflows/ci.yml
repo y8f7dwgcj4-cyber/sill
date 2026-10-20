@@ -108,6 +108,106 @@ jobs:
             -destination 'generic/platform=iOS Simulator' -configuration Debug \
             -derivedDataPath "$RUNNER_TEMP/DerivedData" CODE_SIGNING_ALLOWED=NO ARCHS=arm64 build
 
+      # Only a CLI path that ends before the host starts: --print-tailnet reads a test file and
+      # prints what the door would bind. It opens no listener.
+      - name: Run the CLI where it needs no capture, encoder or listener
+        timeout-minutes: 2
+        run: |
+          conf="$RUNNER_TEMP/tailscale.conf"
+          printf 'address = 100.64.0.1\n' > "$conf"
+          chmod 600 "$conf"
+          .build/release/SillHost --tailnet-config="$conf" --print-tailnet
+          printf 'address = 192.168.1.2\n' > "$conf"
+          out="$(.build/release/SillHost --tailnet-config="$conf" --print-tailnet)"
+          echo "$out"
+          case "$out" in *"Not usable"*) ;; *) echo "::error::a LAN address must be refused"; exit 1 ;; esac
+
+  mutants:
+        description: Also run every check's mutants (one job per check; an hour or more of macOS time)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+# Every run step under bash -eo pipefail (GitHub leaves pipefail off unless the shell is named).
+defaults:
+  run:
+    shell: bash
+
+# A newer push to the same pull request, or to main, cancels the run still going for the older one.
+# The event is in the group so that a push to main never cancels a run started by hand (the
+# mutants: an hour and more of paid macOS time), nor the other way round.
+concurrency:
+  group: ci-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build and check
+    # The newest macOS image GitHub offers, and the only one with Xcode 27, which Sill is built
+    # with: macOS 27 with Xcode 27.0, Xcode_27.1_beta.app and a 27.2 beta, a public preview, in
+    # October 2026. macos-latest (macOS 26) has Xcode 26.6 at most. See docs/release-checklist.md.
+    runs-on: xcode-27
+    timeout-minutes: 30
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The Mac side (SwiftPM, the pure checks, the CLI) on the newest Xcode 27 that is not a beta, as
+      # Sill for Mac's releases are built; without one, a warning and the newest Xcode there. The iOS
+      # app picks its own below.
+      - name: Select Xcode 27
+        id: xcode
+        uses: ./.github/actions/select-xcode
+        with:
+          version: '27'
+
+      # The package has no dependencies (so no Package.resolved yet): the key is the toolchain and
+      # the manifest. A checkout gives every source a new modification time, so most of them compile
+      # again; the cache mainly keeps what depends only on the toolchain and the SDK, the SDK's
+      # precompiled modules and the module cache (about 200 MB in all). The pure checks' binaries
+      # stay out of it: .build/* with an exclusion, because actions/cache archives each path it
+      # lists whole, so ".build" with "!.build/checks" would still take .build/checks.
+      - name: Restore SwiftPM's build folder
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            .build/*
+            !.build/checks
+          key: spm-${{ runner.os }}-${{ runner.arch }}-${{ steps.xcode.outputs.toolchain }}-${{ hashFiles('Package.swift', 'Package.resolved') }}
+          restore-keys: |
+            spm-${{ runner.os }}-${{ runner.arch }}-${{ steps.xcode.outputs.toolchain }}-
+
+      - name: Build the Mac host, the CLI and the probes (swift build -c release)
+        run: swift build -c release
+
+      - name: Pure checks (Tests/checks/run-all.sh)
+        run: Tests/checks/run-all.sh
+
+      # The iOS app needs the iOS 27.1 SDK (the iPhone Duo's hinge and fold, docs/iphone-duo-plan.md):
+      # the newest Xcode 27.1 that is not a beta, else its newest beta (the image had only
+      # Xcode_27.1_beta.app, 27A9269, in October 2026); without either, a warning and the newest Xcode
+      # there, whose iOS build then fails if it is older. Selected only here, after the Mac side, so
+      # nothing of Sill for Mac is ever built with a beta.
+      - name: Select Xcode 27.1 for the iOS app
+        uses: ./.github/actions/select-xcode
+        with:
+          version: '27.1'
+          allow-beta: 'true'
+
+      # Not -quiet: with it, Xcode 27 heads each compile that only warned with "error: the following
+      # command failed with exit code 0", which reads like a failure. ARCHS=arm64: the generic
+      # simulator destination would also compile every file for x86_64 (Intel Macs' simulators),
+      # twice the work on this arm64 runner, and no source depends on the architecture.
+      - name: Build the iOS app for the simulator (Debug, arm64, not signed)
+        run: |
+          xcodebuild -project iOSClient/Sill.xcodeproj -scheme Sill \
+            -destination 'generic/platform=iOS Simulator' -configuration Debug \
+            -derivedDataPath "$RUNNER_TEMP/DerivedData" CODE_SIGNING_ALLOWED=NO ARCHS=arm64 build
+
       # Only the CLI's paths that end before the host starts: a refused flag, and
       # --print-reachability, which reads this machine's network configuration once (read-only)
       # and prints the addresses a paired device would be given away from home.

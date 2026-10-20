@@ -22,7 +22,8 @@
 # Point 1 and the untracked files make it fail. Point 2 only lists lines to review, because the
 # test fixtures and the upstream history hold many example values; --strict makes it fail too.
 # It reads files only. It changes nothing. It exits 1 when it finds something, else 0.
-set -uo pipefail
+# No pipefail: "git log | grep -q" stops early, and git then exits with SIGPIPE.
+set -u
 cd "$(dirname "$0")/.."
 
 history=0; strict=0
@@ -108,11 +109,11 @@ while IFS= read -r line; do
     printf '%s' "$line" | grep -Eq '/Users/(you|me|name|USER|\$USER|<[a-z]+>|Shared)\b' || shape "a home folder path: $line"
 done < <(search '/Users/[A-Za-z0-9._-]+')
 
-for who in "$(git config user.email 2>/dev/null)" "$(git config user.name 2>/dev/null)"; do
+for who in "$(git config user.email 2>/dev/null)"; do
     [ -z "$who" ] && continue
     printf '%s' "$who" | grep -Eq "$allowed_mail" && continue
     if git log --all --format='%ae %ce' | grep -q -F -e "$who"; then
-        hit "your git identity ($who) is on a commit; use a GitHub noreply address"
+        hit "your git email ($who) is on a commit; use a GitHub noreply address"
     fi
 done
 

@@ -1,0 +1,30 @@
+// Sill: your own signing values for Scripts/make-app.sh.
+//
+// Copy this file to Packaging/Local.xcconfig and fill it in. Git ignores
+// Packaging/Local.xcconfig, so your values never go into the repository.
+// Do not put your values in this .example file.
+//
+// Each line is KEY = VALUE. A line that starts with // is a comment.
+// make-app.sh reads only the four keys below, and only values made of
+// letters, digits and . - _ ( ) : and spaces.
+
+// Your own bundle identifier. Use a reverse-DNS name that you control.
+// When you change it, macOS asks again for Screen Recording and
+// Accessibility, Sill's settings start fresh, and every device pairs again.
+SILL_BUNDLE_ID = com.example.sill.mac
+
+// Your 10-character Apple team ID. A free personal team works for a
+// development profile (Xcode > Settings > Accounts shows it).
+SILL_TEAM_ID = ABCDE12345
+
+// Optional. The signing identity: its name, part of the name, or its
+// SHA-1 hash. Without it, make-app.sh takes the first Apple Development
+// identity in your keychain.
+// SILL_SIGN_IDENTITY = Apple Development: Your Name (ABCDE12345)
+
+// Optional. A macOS provisioning profile for SILL_BUNDLE_ID that grants
+// keychain-access-groups for SILL_TEAM_ID.SILL_BUNDLE_ID. With it, Sill
+// keeps its key and its paired devices in the data-protection keychain,
+// which no other app can read or create first. The default path is
+// Packaging/embedded.provisionprofile (git ignores it too).
+// SILL_PROVISION_PROFILE = Packaging/embedded.provisionprofile

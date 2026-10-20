@@ -96,18 +96,18 @@ while IFS= read -r line; do
 done < <(search '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}')
 
 while IFS= read -r line; do
-    for ip in $(printf '%s' "$line" | grep -oE '\b100\.(6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\.[0-9]{1,3}\.[0-9]{1,3}(/[0-9]+)?'); do
+    for ip in $(printf '%s' "$line" | grep -oE '100\.(6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\.[0-9]{1,3}\.[0-9]{1,3}(/[0-9]+)?'); do
         case "$ip" in */*) continue ;; esac
         printf '%s' "$ip" | grep -Eq "$allowed_ips" || shape "a Tailscale address: $line"
     done
-done < <(search '\b100\.(6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\.[0-9]{1,3}\.[0-9]{1,3}\b')
+done < <(search '100\.(6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\.[0-9]{1,3}\.[0-9]{1,3}')
 
 while IFS= read -r line; do
     printf '%s' "$line" | grep -Eq '(tail1234|example|tailnet-name)\.ts\.net' || shape "a MagicDNS name: $line"
 done < <(search '[A-Za-z0-9-]+\.[A-Za-z0-9-]+\.ts\.net')
 
 while IFS= read -r line; do
-    printf '%s' "$line" | grep -Eq '/Users/(you|me|name|USER|\$USER|<[a-z]+>|Shared)\b' || shape "a home folder path: $line"
+    printf '%s' "$line" | grep -Eq '/Users/(you|me|name|USER|\$USER|<[a-z]+>|Shared)' || shape "a home folder path: $line"
 done < <(search '/Users/[A-Za-z0-9._-]+')
 
 # Apple team IDs: a 10-character ID beside a signing word. The placeholders are allowed.
@@ -119,13 +119,13 @@ done < <(search '(DEVELOPMENT_TEAM|TeamIdentifier|team-identifier|SILL_TEAM_ID|\
 # IPv4 addresses outside the documentation ranges (RFC 5737), loopback and 0.0.0.0. Version
 # numbers such as 1.2.3.4 in a version line also show here: review them.
 while IFS= read -r line; do
-    for ip in $(printf '%s' "$line" | grep -oE '\b([0-9]{1,3}\.){3}[0-9]{1,3}\b'); do
+    for ip in $(printf '%s' "$line" | grep -oE '([0-9]{1,3}\.){3}[0-9]{1,3}'); do
         printf '%s' "$ip" | grep -Eq '^(192\.0\.2\.|198\.51\.100\.|203\.0\.113\.|127\.|0\.0\.0\.0$|255\.)' && continue
         printf '%s' "$ip" | grep -Eq '^100\.(6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\.' && continue   # Tailscale: checked above
         shape "an IPv4 address outside the documentation ranges: $line"
         break
     done
-done < <(search '\b([0-9]{1,3}\.){3}[0-9]{1,3}\b')
+done < <(search '([0-9]{1,3}\.){3}[0-9]{1,3}')
 
 for who in "$(git config user.email 2>/dev/null)"; do
     [ -z "$who" ] && continue

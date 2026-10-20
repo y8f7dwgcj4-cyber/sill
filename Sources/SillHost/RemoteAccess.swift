@@ -293,18 +293,6 @@ package final class RemoteAccess {
         publish()
     }
 
-    /// Renames a paired device (the Mac's own label for it).
-    package func rename(fingerprint: String, to name: String) {
-        guard let i = paired.firstIndex(where: { $0.fingerprint == fingerprint }) else { return }
-        let clean = SafeText.label(name)
-        guard !clean.isEmpty else { return }
-        paired[i].name = clean
-        paired[i].model = nil
-        save()
-        publishTrust()
-        publish()
-    }
-
     /// A session of this paired device started: for the pane's "last connected" (`route`: "through
     /// Tailscale").
     func sessionStarted(fingerprint: Data, route: String) {
@@ -485,6 +473,9 @@ package final class RemoteAccess {
     }
 
     private func listenerChanged(_ state: RemoteStatus.Listener) {
+        // A report from a listener that a reload of a bad file has just stopped is late: keep
+        // the "not configured" state.
+        if target == nil, case .notConfigured = listenerState, !isNotConfigured(state), state != .off { return }
         listenerState = state
         if case .listening = state { holdIdleSleep(true) } else { holdIdleSleep(false) }
         publish()
@@ -498,6 +489,11 @@ package final class RemoteAccess {
     private func addresses() -> [MacAddress] {
         guard remoteAccess || window.isOpen, let target else { return [] }
         return [MacAddress(host: target.address, kind: MacAddress.vpn, via: "Tailscale")]
+    }
+
+    private func isNotConfigured(_ state: RemoteStatus.Listener) -> Bool {
+        if case .notConfigured = state { return true }
+        return false
     }
 
     /// Starts or ends the idle-sleep hold, with one log line for each change.

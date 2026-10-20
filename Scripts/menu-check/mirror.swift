@@ -66,7 +66,7 @@ func describe(_ it: MacMenuItem) -> String {
 func dynamic(_ m: MacMenu?) -> Int { Int(m?.items?.compactMap { $0.title }.first { $0.hasPrefix("Dynamic ") }?.dropFirst(8) ?? "") ?? -1 }
 
 @MainActor func main() async -> Int32 {
-    let server = StreamServer()
+    let server = StreamServer(testHost: true)
     let mirror = MenuMirror(server: server)
     let fixtureTarget = MenuMirror.Target(pid: pid, app: "menufixture", bundleID: nil)
     var current: MenuMirror.Target? = fixtureTarget

@@ -530,6 +530,13 @@ No commit changes `Sources/StreamProtocol/` or `iOSClient/`. The door keeps TLS 
 - Risk: the first build can fail. `docs/BUILD-AND-VERIFY.md` asks you to note each failure.
 - Risk: the upstream history in the fork still holds upstream's names and email. They are not yours.
 
+### 12.1 Your answers (2026-10-23)
+
+- D6: no weekly rebuild. Build without a provisioning profile, so Sill uses the login keychain. Delete the old Sill items before the first launch, as `docs/BUILD-AND-VERIFY.md` says. With D8, a planted trust entry gives an attacker little: the port answers only Tailscale sources that your ACL admits, and a process on the Mac itself cannot reach the door.
+- D7: accepted as it is.
+- D8: you set Tailscale ACLs.
+- D9: the away quality stays Low · Standard.
+
 ## 13. Comments that do not follow STE
 
 I wrote the new files and the changed comments in STE: `TailnetConfig.swift`, `TailnetBind.swift`, `StatusFile.swift`, the new tests, the new parts of `RemoteServer.swift`, `RemoteAccess.swift`, `DoorPolicy.swift`, `OriginPolicy.swift` and `Door.swift`, `Scripts/check-personal-info.sh`, the templates and the documents.
